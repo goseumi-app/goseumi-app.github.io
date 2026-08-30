@@ -1,0 +1,180 @@
+name: 앱 빌드 (APK + AAB)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Java 21 설치
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 의존성 설치
+        run: npm install
+
+      - name: 서명키 진단 (덮어 설치가 안 됐던 원인 추적용)
+        run: |
+          echo "HOME=$HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_SDK_HOME=${ANDROID_SDK_HOME:-(미설정)}"
+          echo "ANDROID_USER_HOME=${ANDROID_USER_HOME:-(미설정)}"
+          echo "--- 러너에 원래 있던 debug.keystore ---"
+          ls -la ~/.android/ 2>/dev/null || echo "(없음)"
+
+      - name: 고정 디버그 서명키 심기 (홈 디렉터리 + 프로젝트 양쪽)
+        run: |
+          mkdir -p ~/.android
+          base64 -d debug-key.b64 > ~/.android/debug.keystore
+          base64 -d debug-key.b64 > goseumi-debug.jks
+          echo "--- 이 저장소에 박혀 있는 서명키 ---"
+          keytool -list -v -keystore goseumi-debug.jks -storepass android 2>/dev/null | grep -E "Alias name|SHA256:"
+
+      - name: 안드로이드 프로젝트 생성
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: 위치 권한 선언 (달빛어린이병원 «가까운 순» — 웹뷰가 위치를 물으려면 필요)
+        run: |
+          python3 - <<'PY'
+          import io
+          p='android/app/src/main/AndroidManifest.xml'
+          s=io.open(p).read()
+          perms='    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
+          if 'ACCESS_COARSE_LOCATION' not in s:
+              a='<uses-permission android:name="android.permission.INTERNET" />'
+              if a in s: s=s.replace(a, a+'\n'+perms.rstrip('\n'))
+              else: s=s.replace('</manifest>', perms+'</manifest>')
+              io.open(p,'w').write(s)
+          print('\n'.join(l for l in s.split('\n') if 'permission' in l))
+          PY
+
+      - name: 서명 설정을 프로젝트에 못박기 + 버전 올리기
+        run: |
+          cp goseumi-debug.jks android/app/goseumi-debug.jks
+          python3 - "${{ github.run_number }}" <<'PY'
+          import io, re, sys
+          run = sys.argv[1]
+          p = 'android/app/build.gradle'
+          s = io.open(p, encoding='utf-8').read()
+          block = ("\n    signingConfigs {\n"
+                   "        debug {\n"
+                   "            storeFile file('goseumi-debug.jks')\n"
+                   "            storePassword 'android'\n"
+                   "            keyAlias 'androiddebugkey'\n"
+                   "            keyPassword 'android'\n"
+                   "        }\n"
+                   "    }\n")
+          m = re.search(r'(?m)^android\s*\{', s)
+          assert m, 'android block not found'
+          s = s[:m.end()] + block + s[m.end():]
+          s2 = re.sub(r'versionCode\s+\d+', 'versionCode ' + run, s, count=1)
+          assert s2 != s, 'versionCode not replaced'
+          s = s2
+          s = re.sub(r'versionName\s+"[^"]*"', 'versionName "1.0.' + run + '"', s, count=1)
+          io.open(p, 'w', encoding='utf-8').write(s)
+          print(s[:1400])
+          PY
+
+      - name: 앱 이름 추출 (결과물 이름에 박아서 눈으로 확인 가능하게)
+        run: |
+          cat capacitor.config.json
+          cat android/app/src/main/res/values/strings.xml
+          LABEL=$(grep -o '<string name="app_name">[^<]*' android/app/src/main/res/values/strings.xml | sed 's/.*>//')
+          echo "생성된 앱 이름: [$LABEL]"
+          echo "APP_LABEL=$LABEL" >> $GITHUB_ENV
+
+      - name: 앱 아이콘 적용
+        run: |
+          sudo apt-get install -y imagemagick >/dev/null 2>&1 || true
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            dpi="${d%%:*}"; size="${d##*:}"
+            dir="android/app/src/main/res/mipmap-$dpi"
+            mkdir -p "$dir"
+            convert www/icon-512.png -resize ${size}x${size} "$dir/ic_launcher.png"
+            convert www/icon-maskable-512.png -resize ${size}x${size} "$dir/ic_launcher_round.png"
+            convert www/icon-maskable-512.png -resize ${size}x${size} "$dir/ic_launcher_foreground.png"
+          done
+
+      - name: 테스트용 APK 빌드 (지인 배포용)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 'APK 서명 지문 확인 (이 값이 매번 같아야 덮어 설치가 됩니다)'
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | tail -1)
+          if [ -n "$SIGNER" ]; then
+            APKCERT=$("$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')
+          else
+            APKCERT=$(keytool -printcert -jarfile "$APK" | grep -m1 "SHA256:" | awk '{print $2}' | tr -d ':' | tr 'A-Z' 'a-z')
+          fi
+          KEYCERT=$(keytool -list -v -keystore goseumi-debug.jks -storepass android 2>/dev/null | grep -m1 "SHA256:" | awk '{print $2}' | tr -d ':' | tr 'A-Z' 'a-z')
+          VCODE=$(grep -m1 -oE "versionCode [0-9]+" android/app/build.gradle | awk '{print $2}')
+          VNAME=$(grep -m1 -oE 'versionName "[^"]*"' android/app/build.gradle | cut -d'"' -f2)
+          echo "APK 서명 : $APKCERT"
+          echo "저장소 키: $KEYCERT"
+          {
+            echo "## 이 APK의 신원"
+            echo ""
+            echo "| | 값 |"
+            echo "|---|---|"
+            echo "| 앱 버전 | \`$VNAME\` (versionCode $VCODE) |"
+            echo "| **APK 서명 지문 (SHA-256)** | \`$APKCERT\` |"
+            echo "| 저장소에 박아둔 서명키 | \`$KEYCERT\` |"
+            echo ""
+            if [ "$APKCERT" = "$KEYCERT" ]; then
+              echo "✅ **서명이 고정 키와 일치합니다.** 이 지문이 매번 같으면 기존 앱 위에 덮어 설치됩니다 (기록 유지)."
+            else
+              echo "❌ **서명이 고정 키와 다릅니다.** 이대로면 덮어 설치가 안 됩니다."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$APKCERT" != "$KEYCERT" ]; then echo "::warning::APK 서명이 고정 키와 다릅니다 — 덮어 설치가 안 될 수 있습니다"; fi
+
+      - name: APK 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: 설치파일-APK-앱이름은-${{ env.APP_LABEL }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: 스토어용 AAB 빌드 (서명키 등록된 경우만)
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > android/app/upload.jks
+          cd android
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=$PWD/app/upload.jks \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias=siwoo \
+            -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
+
+      - name: AAB 업로드
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: 스토어용-AAB-앱이름은-${{ env.APP_LABEL }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
