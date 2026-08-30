@@ -93,7 +93,7 @@ const launchOpts = {args:['--no-sandbox']};
 if (process.env.PW_CHROME) launchOpts.executablePath = process.env.PW_CHROME;
 const browser = await chromium.launch(launchOpts);
 const VIEWS = ['home','plays','food','log','sleep','er','moon','map','vax','backup','summary','settings'];
-const CHILD = JSON.stringify({birth:'2025-12-25',due:null,domain:'인지',reason:'play',name:'시우'});
+const CHILD = JSON.stringify({birth:'2025-12-25',due:null,domain:'인지',reason:'play',name:'아기'});
 
 async function fresh(opts={}) {
   const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light', ...opts});
