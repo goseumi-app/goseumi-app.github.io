@@ -1,0 +1,11 @@
+{
+  "appId": "com.evelog.siwoo",
+  "appName": "고슴이",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  }
+}
