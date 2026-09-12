@@ -16,18 +16,18 @@ jobs:
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
     steps:
       - name: 코드 가져오기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Java 21 설치
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Node 설치
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: 의존성 설치
         run: npm install
@@ -156,7 +156,7 @@ jobs:
           if [ "$APKCERT" != "$KEYCERT" ]; then echo "::warning::APK 서명이 고정 키와 다릅니다 — 덮어 설치가 안 될 수 있습니다"; fi
 
       - name: APK 업로드
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 설치파일-APK-앱이름은-${{ env.APP_LABEL }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -174,7 +174,7 @@ jobs:
 
       - name: AAB 업로드
         if: ${{ env.KEYSTORE_B64 != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 스토어용-AAB-앱이름은-${{ env.APP_LABEL }}
           path: android/app/build/outputs/bundle/release/app-release.aab
