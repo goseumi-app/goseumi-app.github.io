@@ -89,9 +89,9 @@ jobs:
           m = re.search(r'(?m)^android\s*\{', s)
           assert m, 'android block not found'
           s = s[:m.end()] + block + s[m.end():]
-          s2 = re.sub(r'versionCode\s+\d+', 'versionCode ' + run, s, count=1)
-          assert s2 != s, 'versionCode not replaced'
-          s = s2
+          # run_number가 템플릿 기본값(versionCode 1)과 같아도 실패하지 않게 — «바뀌었는지»가 아니라 «있는지»만 확인 (새 저장소 첫 실행 #1이 이걸로 죽었음)
+          assert re.search(r'versionCode\s+\d+', s), 'versionCode not found'
+          s = re.sub(r'versionCode\s+\d+', 'versionCode ' + run, s, count=1)
           s = re.sub(r'versionName\s+"[^"]*"', 'versionName "1.0.' + run + '"', s, count=1)
           io.open(p, 'w', encoding='utf-8').write(s)
           print(s[:1400])
