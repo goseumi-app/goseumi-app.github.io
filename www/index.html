@@ -190,11 +190,19 @@ label.f{display:block;font-size:13.5px;color:var(--sub);margin:13px 0 5px;font-w
 .condbtn.on{border-color:var(--coral);background:var(--pink);color:#7A3A36}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:13px}
 .cal .h{color:var(--sub);font-size:11px;padding:4px 0;font-weight:800}
-.cal .d{padding:8px 0;border-radius:12px;cursor:pointer;position:relative;font-weight:700}
-.cal .d.dot::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);
-  width:5px;height:5px;border-radius:50%;background:var(--coral)}
-.cal .d.sel{background:var(--peach);color:#5A3A22}
+.cal .d{padding:6px 0 4px;border-radius:12px;cursor:pointer;position:relative;font-weight:700;line-height:1.3}
+.cal .d .mk{display:flex;justify-content:center;gap:2px;height:5px;margin-top:2px}
+.cal .d .mk b{width:5px;height:5px;border-radius:50%;display:block}
+.mk b.k1,.callg b.k1{background:#B7A6E0} .mk b.k2,.callg b.k2{background:var(--mint2)}
+.mk b.k3,.callg b.k3{background:var(--peach2)} .mk b.k4,.callg b.k4{background:var(--coral)}
+/* 밤중 모드는 팔레트가 일부러 어두워서 점이 묻힌다 — 점만 조금 밝게 */
+body.night .mk b.k1,body.night .callg b.k1{background:#8A7BB5} body.night .mk b.k2,body.night .callg b.k2{background:#6FA98A}
+body.night .mk b.k3,body.night .callg b.k3{background:#C48A66} body.night .mk b.k4,body.night .callg b.k4{background:#C97C5A}
+.cal .d.future{opacity:.55}
 .cal .d.today{outline:2.5px solid var(--peach2)}
+.cal .d.sel{outline:2.5px solid var(--coral);background:var(--line)}
+.callg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;color:var(--sub);font-weight:700}
+.callg b{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:-1px;margin-right:4px}
 .logitem{border-left:4px solid var(--peach2);padding:6px 0 6px 12px;margin:10px 0;border-radius:2px}
 .logitem .dt{font-size:12px;color:var(--sub);font-weight:800}
 .mile{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:2px solid var(--line);cursor:pointer}
@@ -1604,31 +1612,60 @@ function fallbackCopy(t,cb){const ta=document.createElement("textarea");ta.value
  ta.select();try{document.execCommand("copy")}catch(e){}document.body.removeChild(ta);cb()}
 
 /* ============ 달력 ============ */
+function calMarks(ds){
+  /* 그날에 무엇이 있는지 — 잠·놀이·이유식(식단)·기록. 판정이 아니라 «있음/없음»만 */
+  return { s: sleepsOn(ds).some(x=>x.e), p: playLogs.some(l=>l.date===ds),
+    f: !!(feed.plan[ds]&&feed.plan[ds].meals&&feed.plan[ds].meals.some(m=>m.items&&m.items.length)), l: logs.some(l=>l.date===ds) };
+}
 function vCalInner(){
+  const t=todayStr();
   if(!calMonth){const n=new Date();calMonth={y:n.getFullYear(),m:n.getMonth()}}
   const{y,m}=calMonth;
   const first=new Date(y,m,1),start=first.getDay(),days=new Date(y,m+1,0).getDate();
-  const logDates=new Set(logs.map(l=>l.date).concat(playLogs.map(l=>l.date)));
   let h='<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-  +'<button class="ghost" onclick="calShift(-1)">◀</button><b class="hd" style="font-size:16px">'+y+'년 '+(m+1)+'월</b><button class="ghost" onclick="calShift(1)">▶</button></div><div class="cal">';
+  +'<button class="ghost" onclick="calShift(-1)">◀</button><b class="hd" style="font-size:16px">'+y+'년 '+(m+1)+'월</b>'
+  +'<span><button class="ghost" style="padding:4px 8px" onclick="calToday()">오늘</button><button class="ghost" onclick="calShift(1)">▶</button></span></div><div class="cal">';
   ["일","월","화","수","목","금","토"].forEach(d=>h+='<div class="h">'+d+'</div>');
   for(let i=0;i<start;i++)h+='<div></div>';
   for(let d=1;d<=days;d++){
     const ds=y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
-    const cls=["d"];if(logDates.has(ds))cls.push("dot");if(ds===todayStr())cls.push("today");if(ds===calSel)cls.push("sel");
-    h+='<div class="'+cls.join(" ")+'" onclick="calSel=\''+ds+'\';render()">'+d+'</div>'}
-  h+='</div><div class="small" style="margin-top:8px">● 기록 있음 — 빈 날엔 아무 표시도 안 해요. 「놓친 날」 같은 건 없어요.</div></div>';
+    const mk=calMarks(ds), cls=["d"]; if(ds===t)cls.push("today"); if(ds===calSel)cls.push("sel"); if(ds>t)cls.push("future");
+    h+='<div class="'+cls.join(" ")+'" onclick="calSel=\''+ds+'\';render()">'+d+'<i class="mk" aria-hidden="true">'
+      +(mk.s?'<b class="k1"></b>':'')+(mk.p?'<b class="k2"></b>':'')+(mk.f?'<b class="k3"></b>':'')+(mk.l?'<b class="k4"></b>':'')+'</i></div>'; }
+  h+='</div><div class="callg"><span><b class="k1"></b>잠</span><span><b class="k2"></b>놀이</span><span><b class="k3"></b>이유식</span><span><b class="k4"></b>기록</span></div>'
+   +'<div class="small" style="margin-top:6px">날짜를 누르면 그날 하루가 아래에 모여요 — 그대로 보낼 수도 있어요. 빈 날엔 아무 표시도 안 해요. 「놓친 날」 같은 건 없어요.</div></div>';
+  if(calSel) h+=calDayCard(calSel);
   h+='<div class="card"><label class="f" style="margin-top:0">🔍 기록 검색</label><input type="text" id="q" placeholder="예: 뒤집기" oninput="renderSearch(this.value)"><div id="qRes"></div></div>';
-  if(calSel){
-    const dl=logs.filter(l=>l.date===calSel),pl=playLogs.filter(l=>l.date===calSel);
-    h+='<h3>'+calSel+'</h3>';
-    if(!dl.length&&!pl.length)h+='<div class="sub">기록이 없어요.</div>';
-    dl.forEach(l=>h+=logItem(l,logs.indexOf(l)));
-    pl.forEach(l=>{const p=PLAYS.find(x=>x.n===l.n);
-      h+='<div class="card" style="padding:11px 14px;font-size:14px">'+(l.res?({happy:"😀",meh:"😐",sad:"🙁",skip:"⏭"})[l.res]||"✅":"✅")+' <b>'+esc(p?p.name:l.n)+'</b>'
-      +(l.cond?' <span class="chip">'+CONDS.find(c=>c[0]===l.cond)[1]+'</span>':"")+'</div>'});
-    if(dl.length)h+='<button class="sec" onclick="copyTSV(\''+calSel+'\')">📋 이 날짜 시트용 복사</button>';
-  }
+  return h;
+}
+function calToday(){ const n=new Date(); calMonth={y:n.getFullYear(),m:n.getMonth()}; calSel=todayStr(); render(); }
+/* 홈·바로가기에서 달력으로 — 오늘(또는 지정한 날)을 미리 골라 두어 «오늘 할 일»이 바로 보이게 */
+function goCal(ds){ logMode="cal"; const n=ds?new Date(ds+"T00:00:00"):new Date(); calMonth={y:n.getFullYear(),m:n.getMonth()}; calSel=ds||todayStr(); go("log"); }
+function calDayCard(ds){
+  const t=todayStr(), isT=ds===t, fut=ds>t;
+  const dt=new Date(ds+"T00:00:00"), WD=["일","월","화","수","목","금","토"];
+  const sl=sleepsOn(ds).filter(x=>x.e).slice().sort((a,b)=>hm2m(a.s)-hm2m(b.s));
+  const p=feed.plan[ds], meals=((p&&p.meals)||[]).filter(mm=>mm.items&&mm.items.length);
+  const pl=playLogs.filter(x=>x.date===ds), dl=logs.filter(l=>l.date===ds);
+  const age=(!fut&&child&&child.birth)?ageAtStr(ds):"";
+  let h='<div class="card" style="border-color:var(--peach2)"><h3 style="margin-top:0">'+(isT?'오늘 · ':'')+(dt.getMonth()+1)+'월 '+dt.getDate()+'일 ('+WD[dt.getDay()]+')'
+    +(age?' <span class="small" style="font-weight:600">'+age+'</span>':'')+'</h3>';
+  /* 오늘을 누르면 «오늘 해볼 놀이»가 달력 안에서도 보인다 */
+  if(isT){ const sug=suggestToday();
+    h+='<div style="margin:2px 0 8px"><div class="small" style="font-weight:800;margin-bottom:4px">🧸 오늘 해볼 놀이 — 영역별 하나씩</div>'
+     +sug.map(n=>{const q=PLAYS.find(x=>x.n===n); return q?'<span class="chip'+(doneToday(n)?' c2':'')+'" style="margin:2px 4px 2px 0;cursor:pointer" onclick="go(\'card\','+n+')">'+(doneToday(n)?'✓ ':'')+esc(q.name)+'</span>':''}).join('')+'</div>'; }
+  const rows=[];
+  if(sl.length) rows.push('🌙 잠 — 합쳐서 '+fmtDur(sleepTotal(ds))+' (낮잠 '+napCount(ds)+'회)<div class="small" style="font-weight:600">'+sl.map(x=>(x.n?'🌤':'🌙')+' '+x.s+'~'+x.e+' ('+fmtDur(durMin(x))+')').join(' · ')+'</div>');
+  if(meals.length) rows.push('🍚 이유식'+(fut?' (예정)':'')+(feed.style==="bowl"?' · 죽':' · 토핑')+'<div class="small" style="font-weight:600">'
+    +meals.map((mm,i)=>(i+1)+'끼 '+esc(mm.items.join(feed.style==="bowl"?' + ':' · '))).join('<br>')+(p.testItem?'<br>🧪 새 재료: '+esc(p.testItem):'')+'</div>');
+  if(pl.length) rows.push('🧸 놀이 '+pl.length+'회<div class="small" style="font-weight:600">'+pl.map(l=>{const q=PLAYS.find(x=>x.n===l.n);
+    return (l.res?({happy:"😀",meh:"😐",sad:"🙁",skip:"⏭"})[l.res]||"✅":"✅")+' '+esc(q?q.name:String(l.n))+(l.cond?' <span class="chip">'+(CONDS.find(c=>c[0]===l.cond)||["",""])[1]+'</span>':'')}).join('<br>')+'</div>');
+  if(rows.length) h+=rows.map(r=>'<div style="font-size:14.5px;font-weight:700;margin:6px 0">'+r+'</div>').join('');
+  else if(!isT&&!dl.length) h+='<div class="sub" style="margin:4px 0 8px">'+(fut?'아직 예정된 게 없어요. 이유식 식단이 만들어지면 여기 보여요.':'이 날은 남긴 기록이 없어요.')+'</div>';
+  if(dl.length){ h+='<div style="font-size:14.5px;font-weight:700;margin:8px 0 2px">✏️ 본 것 '+dl.length+'건</div>'; dl.forEach(l=>h+=logItem(l,logs.indexOf(l))); }
+  if(!fut){ h+='<div class="row" style="margin-top:8px"><button class="sec" onclick="shareDay(\''+ds+'\')">📤 '+(isT?'오늘':'이 날')+' 요약 보내기</button>'
+    +(dl.length?'<button class="ghost" onclick="copyTSV(\''+ds+'\')">📋 시트용 복사</button>':'')+'</div>'; }
+  h+='</div>';
   return h;
 }
 function calShift(d){calMonth.m+=d;if(calMonth.m<0){calMonth.m=11;calMonth.y--}if(calMonth.m>11){calMonth.m=0;calMonth.y++}calSel=null;render()}
@@ -1770,7 +1807,11 @@ function quickRow(){
     : '<button class="qbtn" onclick="go(\'map\')"><span class="e">📈</span>성장·접종</button>';
   h+='</div>';
   if(on) h+='<div class="small" style="margin:-4px 0 8px;text-align:center">🌙 '+on.s+'부터 자는 중 — 깨면 위 버튼을 눌러주세요</div>';
-  h+='<button class="ghost" style="width:100%;margin:-2px 0 10px;color:var(--sub);font-size:13px;font-weight:700" onclick="shareDay()">📤 오늘 하루 요약 보내기 (조부모·배우자에게)</button>';
+  /* 하루 요약 — 오늘·어제는 바로, 다른 날은 달력에서 */
+  h+='<div style="display:flex;align-items:center;gap:4px;margin:-4px 0 8px">'
+   +'<button class="ghost" style="flex:1;min-height:38px;white-space:nowrap;color:var(--sub);font-size:13px;font-weight:700;text-align:left;padding-left:6px" title="조부모·배우자에게 카톡으로" onclick="shareDay()">📤 오늘 하루 요약 보내기</button>'
+   +'<button class="ghost" style="min-height:38px;white-space:nowrap;color:var(--sub);font-size:13px;font-weight:700;padding:0 10px" title="어제 하루 요약 보내기" onclick="shareDay(addDays(todayStr(),-1))">어제</button>'
+   +'<button class="ghost" style="min-height:38px;white-space:nowrap;color:var(--sub);font-size:13px;font-weight:700;padding:0 6px 0 10px" onclick="goCal()">📅 달력</button></div>';
   return h;
 }
 
@@ -2079,11 +2120,11 @@ function setSex(s){ child.sex=s; save(); render(); }
 
 
 /* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝 */
-const WHATS_NEW={v:"v25",items:[
- ["📊 잠과 놀이가 그림으로","수면 탭에 최근 7일 그래프, 놀이 탭에 이번 주 영역별 횟수가 생겼어요.","sleep"],
- ["🏠 홈이 짧아졌어요","수면·이유식·접종이 한 줄 타일로 모였어요. 누르면 각 탭으로 갑니다.","home"],
- ["🔎 글자가 조금 커졌어요","전체 글자와 줄간격을 키우고 여백은 줄였어요 — 덜 스크롤하고 더 잘 보이게.",""],
- ["✓ 한 번 누르면 완료","놀이도 이정표도 ✓ 하나면 끝. 반응·날짜는 원할 때만.","plays"]]};
+const WHATS_NEW={v:"v26",items:[
+ ["📅 어느 날이든 요약 보내기","달력에서 날짜를 누르면 그날의 잠·이유식·놀이·기록이 모이고, 그대로 조부모·배우자에게 보낼 수 있어요. 홈에 «어제» 버튼도 생겼어요.","cal"],
+ ["● 달력에 색점","잠·놀이·이유식·기록이 있는 날은 색점으로 보여요. 오늘을 누르면 오늘 해볼 놀이도 같이.","cal"],
+ ["📲 아이콘 길게 누르기","안드로이드에서 고슴이 아이콘을 길게 누르면 잠 기록·달력·이유식으로 바로 가는 메뉴가 떠요 (아이폰은 아직 안 돼요).",""],
+ ["📊 잠과 놀이가 그림으로","수면 탭 7일 그래프, 놀이 탭 이번 주 영역별 횟수.","sleep"]]};
 function whatsNewCard(){
   if(store.get("seenNew")===WHATS_NEW.v)return"";
   if(!store.get("firstUse"))return"";           /* 완전 신규 사용자에겐 띄우지 않음 */
@@ -2131,7 +2172,7 @@ function dayDigest(ds){
   ds=ds||todayStr();
   const L=[], nm=(child&&child.name)||"우리 아이";
   const dt=new Date(ds+"T00:00:00");
-  L.push("🦔 "+nm+" — "+(dt.getMonth()+1)+"월 "+dt.getDate()+"일 ("+ageText()+")");
+  L.push("🦔 "+nm+" — "+(dt.getMonth()+1)+"월 "+dt.getDate()+"일 ("+(ds===todayStr()?ageText():(ageAtStr(ds)||"")+" · D"+dayNum(ds))+")");
   L.push("");
   /* 잠 */
   const sl=sleepsOn(ds).slice().sort((a,b)=>hm2m(a.s)-hm2m(b.s));
@@ -2149,7 +2190,7 @@ function dayDigest(ds){
   /* 관찰 기록 */
   const lg=logs.filter(x=>x.date===ds);
   if(lg.length){
-    L.push("✏️ 오늘 본 것");
+    L.push(ds===todayStr()?"✏️ 오늘 본 것":"✏️ 이날 본 것");
     lg.forEach(x=>{ const t=(x.output||x.input||"").trim(); if(t)L.push("  · "+t.slice(0,80)); });
   }
   /* 놀이 */
@@ -2158,15 +2199,15 @@ function dayDigest(ds){
     const names=pl.map(x=>{const q=PLAYS.find(y=>y.n===x.n); return q?q.name:null}).filter(Boolean);
     if(names.length)L.push("🧸 놀이 — "+names.join(", "));
   }
-  if(L.length<=2)L.push("(아직 오늘 기록이 없어요)");
+  if(L.length<=2)L.push(ds===todayStr()?"(아직 오늘 기록이 없어요)":"(이 날은 남긴 기록이 없어요)");
   L.push("");
   L.push("— 고슴이 앱에서 보냄");
   return L.join("\n");
 }
 function shareDay(ds){
-  const txt=dayDigest(ds);
+  const txt=dayDigest(ds), ttl=(ds&&ds!==todayStr())?ds.slice(5).replace("-","/")+" 하루":"오늘 하루";
   if(navigator.share){
-    navigator.share({title:"오늘 하루",text:txt}).catch(()=>copyDigest(txt));
+    navigator.share({title:ttl,text:txt}).catch(()=>copyDigest(txt));
   } else copyDigest(txt);
 }
 function copyDigest(txt){
@@ -2977,6 +3018,10 @@ function render(){
 })();
 applyBig();
 render();
+/* 홈 화면 아이콘을 길게 눌러 뜨는 바로가기(manifest shortcuts)로 들어온 경우 — ?v=sleep|cal|food|plays */
+(function(){ try{ const v=new URLSearchParams(location.search).get("v"); if(!v) return;
+  if(child){ if(v==="cal") goCal(); else if(["sleep","food","plays","log"].includes(v)) go(v); }
+  history.replaceState(history.state,"",location.pathname); }catch(e){} })();
 /* 오프라인에서도 열리게 — 웹(홈 화면에 추가)에서만. 설치한 앱은 파일을 이미 품고 있어서 필요 없다 */
 if("serviceWorker" in navigator && location.protocol==="https:" && !window.Capacitor){
   window.addEventListener("load",function(){

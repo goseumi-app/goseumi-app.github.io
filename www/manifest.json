@@ -30,5 +30,46 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "🌙 잠 기록 시작",
+      "short_name": "잠 기록",
+      "description": "밤잠·낮잠 한 번에 시작",
+      "url": "./index.html?v=sleep",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "📅 달력 · 하루 요약 보내기",
+      "short_name": "달력",
+      "description": "오늘 해볼 놀이·이유식, 어느 날이든 요약 보내기",
+      "url": "./index.html?v=cal",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "🍚 오늘 이유식",
+      "short_name": "이유식",
+      "description": "오늘 식단과 새 재료",
+      "url": "./index.html?v=food",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }

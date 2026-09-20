@@ -50,7 +50,7 @@ self.addEventListener("fetch", e => {
 
   e.respondWith(
     fromNetwork(req).catch(() =>
-      caches.match(req).then(hit =>
+      caches.match(req, { ignoreSearch: true }).then(hit =>   /* ?v=… 바로가기 주소도 같은 화면 파일로 */
         hit || (req.mode === "navigate" ? caches.match("./index.html") : Promise.reject(new Error("offline")))
       )
     )
