@@ -17,10 +17,21 @@ on:
 permissions:
   contents: read
 
+# 홈페이지는 폴더별로 나눠 올리기 때문에 푸시가 연달아 여러 번 온다. 중간 상태(새 놀이 쪽은 올라왔는데
+# sitemap은 아직 등)를 검사하면 가짜 «실패»가 나므로, 푸시 뒤 5분 기다렸다가 검사하고
+# 그 사이 새 푸시가 오면 앞 실행은 취소(회색)한다 — 마지막 상태만 검사된다.
+concurrency:
+  group: app-check
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-24.04   # ubuntu-latest는 2026-10-19부터 Ubuntu 26으로 바뀜 — 검사용 브라우저 설치가 흔들리지 않게 고정
     steps:
+      - name: 나눠 올리는 중이면 마지막 것만 검사 — 5분 기다림 (그 사이 새로 올라오면 이 실행은 취소)
+        if: github.event_name == 'push'
+        run: sleep 300
+
       - name: 코드 가져오기
         uses: actions/checkout@v7
 
