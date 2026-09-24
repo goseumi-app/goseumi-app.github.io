@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
 <title>고슴이 — 놀이와 이유식 육아기록</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -900,11 +901,12 @@ function header(){
 /* ============ 온보딩 ============ */
 let ob={step:1,birth:"",due:"",preterm:false,domain:null,reason:null,name:""};
 function vOnboard(){
-  const s=ob.step;let h='<div class="fade">';
+  const s=ob.step;let h='<div class="fade">'+inAppCard();
   if(s===1){
     h+='<div class="hero"><div>'+mascot("happy",80)+'</div><div class="bubble">안녕하세요! 저는 <b>고슴이</b>예요.<br>아이를 <b>평가하지 않고 바라보는</b> 앱이에요. 아기 생일부터 알려주세요.</div></div>';
     h+='<div class="card pop"><div class="sub" style="font-weight:800">1/3</div><div class="big hd">아이 생일이 언제인가요?</div>'
     +'<label class="f">생년월일</label><input type="date" id="obBirth" value="'+(ob.birth||"")+'">'
+    +(ob.fromLanding?'<div class="small" style="margin-top:6px">홈페이지에서 넣은 생일을 가져왔어요. 맞는지 한 번만 확인해 주세요.</div>':'')
     +'<label class="f">부르는 이름 (안 적어도 돼요)</label><input type="text" id="obName" placeholder="예: 봄이" value="'+esc(ob.name||"")+'">'
     +'<div style="margin-top:10px"><button class="ghost" onclick="ob.preterm=!ob.preterm;render()">'+(ob.preterm?"▾":"▸")+' 예정일보다 이르게 태어났어요</button></div>'
     +(ob.preterm?'<label class="f">원래 예정일 (교정연령으로 계산)</label><input type="date" id="obDue" value="'+(ob.due||"")+'"><div class="small" style="margin-top:6px">이르게 태어난 아기를 출생일로 재면 전부 「늦게」 보여요. 예정일 기준이 정확합니다.</div>':"")
@@ -963,6 +965,69 @@ function playCardMini(n){
     :'<button class="sec" style="padding:8px 14px;margin:0" onclick="playDone('+p.n+',event)">✓ 했어요</button>')
   +'<span class="ghost" style="margin-left:auto;white-space:nowrap">열기 →</span></div></div>';
 }
+/* ============ 📲 설치 · 앱 속 브라우저 ============
+   홈 화면 방식(PWA)의 두 함정을 막는다.
+   ① 카톡·인스타·네이버 앱 «안»에서 열면 기록이 그 앱 안에만 저장된다 — 나중에 크롬·홈 화면으로 열면 텅 빈다.
+   ② 안드로이드 크롬은 «설치» 창을 띄울 수 있는데, 버튼을 안 주면 아무도 모른다.
+   설치된 앱(Capacitor)·홈 화면으로 연 경우는 둘 다 해당 없음 — 특히 아이폰 홈 화면 앱은 UA에 Safari가 없어서 오탐하기 쉽다. */
+function isStandalone(){ try{ return !!(window.navigator.standalone || matchMedia("(display-mode: standalone)").matches
+  || matchMedia("(display-mode: fullscreen)").matches || matchMedia("(display-mode: minimal-ui)").matches); }catch(e){ return false } }
+const INAPP=[[/KAKAOTALK/i,"카카오톡"],[/NAVER\(inapp/i,"네이버 앱"],[/Barcelona/i,"쓰레드"],[/Instagram/i,"인스타그램"],
+  [/FBAN|FBAV|FB_IAB/i,"페이스북"],[/\bLine\//i,"라인"],[/BAND\//i,"밴드"],[/DaumApps/i,"다음 앱"],[/everytimeApp/i,"에브리타임"]];
+function inAppName(ua){
+  if(ua===undefined){ if(window.Capacitor||isStandalone()) return ""; ua=navigator.userAgent||""; }
+  for(const [re,n] of INAPP) if(re.test(ua)) return n;
+  if(/Android/i.test(ua) && /; wv\)/.test(ua)) return "앱 속 브라우저";   /* 안드로이드 웹뷰 표식 — 크롬 맞춤 탭엔 없다 */
+  return "";
+}
+/* 밖(크롬·사파리)으로 여는 주소 — 순수 함수라 검사에서 그대로 부를 수 있다 */
+function outsideUrl(ua,url){
+  if(/KAKAOTALK/i.test(ua)) return "kakaotalk://web/openExternal?url="+encodeURIComponent(url);
+  if(/\bLine\//i.test(ua)) return url+(url.indexOf("?")>=0?"&":"?")+"openExternalBrowser=1";
+  if(/Android/i.test(ua)) return "intent://"+url.replace(/^https?:\/\//i,"")+"#Intent;scheme=https;package=com.android.chrome;end";
+  return "";   /* 아이폰의 다른 앱 속 브라우저 — 사파리를 강제로 열 방법이 없다 */
+}
+function openOutside(){
+  const url=location.href.split("#")[0], go_=outsideUrl(navigator.userAgent||"",url);
+  if(go_){ location.href=go_; return; }
+  const done=()=>alert("주소를 복사했어요.\n\n사파리를 열고 주소창에 붙여넣어 주세요.\n(또는 화면 아래·위의 ··· 메뉴 → «Safari로 열기»)");
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done,()=>fallbackCopy(url,done));
+  else fallbackCopy(url,done);
+}
+function inAppCard(){
+  const n=inAppName(); if(!n) return "";
+  if(child && store.get("inappSnooze")===todayStr()) return "";
+  const ua=navigator.userAgent||"", ios=/iPhone|iPad|iPod/i.test(ua), direct=!!outsideUrl(ua,"https://x/");
+  const br=ios?"사파리":"크롬", ina=ios?"사파리나":"크롬이나", ro=ios?"사파리로":"크롬으로";   /* 받침에 따라 조사가 다르다 */
+  return '<div class="card" style="border-color:var(--coral)">'
+   +'<div style="font-size:15px;font-weight:800">⚠️ 지금 '+n+' 안에서 열려 있어요</div>'
+   +'<div class="small" style="margin:5px 0 10px">여기서 적은 기록은 <b>'+n+' 안에만</b> 저장돼서, 나중에 '+ina+' 홈 화면 아이콘으로 열면 보이지 않아요. '
+   +ro+' 열어서 쓰시는 걸 권해요.</div>'
+   +'<div class="row"><button class="pri" onclick="openOutside()">🧭 '+ro+(direct?' 열기':' 여는 법')+'</button>'
+   +(child?'<button class="ghost" onclick="store.set(\'inappSnooze\',todayStr());render()">오늘은 그냥 쓸게요</button>':'')+'</div></div>';
+}
+let deferredInstall=null;
+window.addEventListener("beforeinstallprompt",function(e){ e.preventDefault(); deferredInstall=e; try{ if(typeof render==="function") render(); }catch(_){} });
+window.addEventListener("appinstalled",function(){ deferredInstall=null; try{ store.set("installNo",1); render(); }catch(_){} });
+function iosSafari(ua){ ua=ua||navigator.userAgent||""; return /iPhone|iPad|iPod/i.test(ua) && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua); }
+function canInstall(){ return !window.Capacitor && !isStandalone() && !inAppName() && (!!deferredInstall || iosSafari()); }
+function doInstall(){
+  if(!deferredInstall) return;
+  deferredInstall.prompt();
+  (deferredInstall.userChoice||Promise.resolve()).then(function(c){ if(c&&c.outcome==="accepted") store.set("installNo",1); deferredInstall=null; render(); }).catch(function(){});
+}
+function installHow(){
+  return deferredInstall ? '<button class="pri" onclick="doInstall()">📲 앱으로 설치하기</button>'
+    : '<div class="small" style="line-height:1.7">사파리 <b>공유 단추</b>(네모에 화살표 ⬆︎) → <b>«홈 화면에 추가»</b> → «추가».<br>그다음부터는 홈 화면의 고슴이 아이콘으로 여세요 — 기록도 그쪽에 쌓여요.</div>';
+}
+function installCard(){
+  if(!canInstall() || store.get("installNo")) return "";
+  return '<div class="card" style="border-color:var(--mint2)">'
+   +'<div style="font-size:15px;font-weight:800">📲 홈 화면에 두고 앱처럼 쓰세요</div>'
+   +'<div class="small" style="margin:5px 0 10px">아이콘 한 번에 열리고, 인터넷이 없어도 열려요. 설치 파일도 가입도 없어요.</div>'
+   +installHow()
+   +'<div style="margin-top:6px"><button class="ghost" onclick="store.set(\'installNo\',1);render()">괜찮아요</button></div></div>';
+}
 function greet(){
   const m=monthAge(), hour=new Date().getHours();
   const t=hour<11?"좋은 아침이에요!":hour<18?"안녕하세요!":"오늘도 수고했어요!";
@@ -970,7 +1035,7 @@ function greet(){
   return '<div class="hero"><div>'+mascot("happy",74)+'</div><div class="bubble">'+t+' '+esc(child.name)+' 생후 <b>'+m+'개월</b>, <b>D'+dayNum()+'</b>이에요. '+w+'</div></div>';
 }
 function vHome(){
-  let h='<div class="fade">'+greet();
+  let h='<div class="fade">'+greet()+inAppCard();
   if(child.reason==="worry"){
     h+='<div class="notice warm">걱정으로 시작하셨죠. 놀이보다 <b>기록</b>이 먼저예요 — 걱정되는 장면을 적어두시면 진료실용 요약으로 묶어드려요. <button class="ghost" onclick="go(\'summary\')">요약 만들기 →</button></div>';
   }
@@ -978,6 +1043,7 @@ function vHome(){
   h+=quickRow();
   h+=whatsNewCard();
   h+=backupCard();
+  h+=installCard();
   // D-day
   const up=appts.filter(a=>daysBetween(todayStr(),a.date)>=0).sort((a,b)=>a.date<b.date?-1:1);
   if(up.length){const a=up[0];const dd=daysBetween(todayStr(),a.date);
@@ -2120,11 +2186,11 @@ function setSex(s){ child.sex=s; save(); render(); }
 
 
 /* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝 */
-const WHATS_NEW={v:"v26",items:[
- ["📅 어느 날이든 요약 보내기","달력에서 날짜를 누르면 그날의 잠·이유식·놀이·기록이 모이고, 그대로 조부모·배우자에게 보낼 수 있어요. 홈에 «어제» 버튼도 생겼어요.","cal"],
- ["● 달력에 색점","잠·놀이·이유식·기록이 있는 날은 색점으로 보여요. 오늘을 누르면 오늘 해볼 놀이도 같이.","cal"],
- ["📲 아이콘 길게 누르기","안드로이드에서 고슴이 아이콘을 길게 누르면 잠 기록·달력·이유식으로 바로 가는 메뉴가 떠요 (아이폰은 아직 안 돼요).",""],
- ["📊 잠과 놀이가 그림으로","수면 탭 7일 그래프, 놀이 탭 이번 주 영역별 횟수.","sleep"]]};
+const WHATS_NEW={v:"v27",items:[
+ ["📅 어느 날이든 요약 보내기","달력에서 날짜를 누르면 그날 하루가 모이고, 그대로 조부모·배우자에게 보낼 수 있어요. 홈에 «어제» 버튼도.","cal"],
+ ["📤 요약 끝에 앱 주소","하루 요약 맨 끝에 고슴이 주소가 한 줄 붙어요. 받는 분이 바로 열어볼 수 있게요. 설정 → 공유에서 끌 수 있어요.","settings"],
+ ["⚠️ 카톡 안에서 열면 알려줘요","카톡·인스타·네이버 앱 안에서 열면 기록이 그 앱에만 저장돼요. 크롬·사파리로 여는 버튼을 드려요.",""],
+ ["📲 앱으로 설치","안드로이드 크롬에서는 버튼 한 번으로 홈 화면에 설치돼요 (설정 → 앱으로 설치).","settings"]]};
 function whatsNewCard(){
   if(store.get("seenNew")===WHATS_NEW.v)return"";
   if(!store.get("firstUse"))return"";           /* 완전 신규 사용자에겐 띄우지 않음 */
@@ -2201,7 +2267,7 @@ function dayDigest(ds){
   }
   if(L.length<=2)L.push(ds===todayStr()?"(아직 오늘 기록이 없어요)":"(이 날은 남긴 기록이 없어요)");
   L.push("");
-  L.push("— 고슴이 앱에서 보냄");
+  L.push(store.get("digestLink",1)?"— 고슴이로 보냄 · https://goseumi-app.github.io":"— 고슴이 앱에서 보냄");
   return L.join("\n");
 }
 function shareDay(ds){
@@ -2915,6 +2981,11 @@ function vSettings(){
   +'<div style="font-size:13.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>🔎 글자 크게<br><span class="small">화면 전체를 조금 키워요. 새벽에 눈이 침침할 때</span></span>'
   +'<button class="condbtn '+(bigText?'on':'')+'" style="margin:0;white-space:nowrap" onclick="cycleBig()">'+(bigText?'켜짐':'꺼짐')+'</button></div>'
   +'</div>';
+  if(canInstall()) h+='<div class="card" style="border-color:var(--mint2)"><h2 class="hd" style="font-size:16px">📲 앱으로 설치</h2>'
+    +'<div class="small" style="margin-bottom:10px">홈 화면 아이콘으로 열면 주소창 없이 앱처럼 보이고, 인터넷이 없어도 열려요.</div>'+installHow()+'</div>';
+  h+='<div class="card"><h2 class="hd" style="font-size:16px">공유</h2>'
+  +'<div style="font-size:13.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>📤 하루 요약 끝에 앱 주소<br><span class="small">받는 분이 «이게 뭐야?» 하면 바로 열어볼 수 있게 맨 끝에 한 줄 붙여요</span></span>'
+  +'<button class="condbtn '+(store.get("digestLink",1)?'on':'')+'" style="margin:0;white-space:nowrap" onclick="store.set(\'digestLink\',store.get(\'digestLink\',1)?0:1);render()">'+(store.get("digestLink",1)?'켜짐':'꺼짐')+'</button></div></div>';
   h+='<div class="card"><h2 class="hd" style="font-size:16px">💬 불편한 점 알려주기</h2>'
   +'<div class="small" style="margin-bottom:8px">막힌 데를 알려주시면 그날 안에 고칩니다. 지금 보시던 화면과 판본이 같이 담겨서 찾기가 쉬워져요.</div>'
   +'<button class="sec" onclick="sendFeedback()">✍️ 한 줄 적어서 복사하기</button>'
@@ -3017,6 +3088,8 @@ function render(){
   if(p && p.stock===undefined && curStage().k!=="pre"){ buildMonth(todayStr()); render(); }
 })();
 applyBig();
+(function(){ try{ const raw=localStorage.getItem("siwoo.prefill"); if(!raw) return; localStorage.removeItem("siwoo.prefill");
+  const pf=JSON.parse(raw); if(!child && pf && /^\d{4}-\d{2}-\d{2}$/.test(pf.birth||"") && pf.birth<=todayStr()){ ob.birth=pf.birth; ob.fromLanding=1; } }catch(e){} })();
 render();
 /* 홈 화면 아이콘을 길게 눌러 뜨는 바로가기(manifest shortcuts)로 들어온 경우 — ?v=sleep|cal|food|plays */
 (function(){ try{ const v=new URLSearchParams(location.search).get("v"); if(!v) return;
