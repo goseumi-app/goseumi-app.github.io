@@ -9,7 +9,8 @@ let ROOT = path.dirname(fileURLToPath(import.meta.url));
 if (!fs.existsSync(path.join(ROOT, 'www'))) ROOT = path.resolve(ROOT, '..');
 const WWW = path.join(ROOT, 'www');
 const MIME = {'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8',
-  '.json':'application/json; charset=utf-8','.png':'image/png','.svg':'image/svg+xml'};
+  '.json':'application/json; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.css':'text/css; charset=utf-8',
+  '.webp':'image/webp','.jpg':'image/jpeg','.woff2':'font/woff2','.xml':'application/xml','.txt':'text/plain; charset=utf-8'};
 
 const results = [];
 const ok  = (name, detail='') => results.push({pass:true,  name, detail});
@@ -310,6 +311,117 @@ async function fresh(opts={}) {
   await ctx.setOffline(false); await ctx.close();
 }
 
+/* ═══════════════ 3. 홈페이지 — 랜딩·개월수별 놀이·달빛어린이병원 ═══════════════
+   앱 밖의 공개 페이지도 앱과 같은 선을 지킨다: 아이 이름·관찰 원문 없음 · 판정 문구 없음 · 달빛은 «전화로 확인» · 광고 링크엔 공정위 문구 */
+{
+  const walk = d => fs.readdirSync(d,{withFileTypes:true}).flatMap(e => e.name.startsWith('.')||['www','node_modules','tests'].includes(e.name) ? []
+    : e.isDirectory() ? walk(path.join(d,e.name)) : e.name.endsWith('.html') ? [path.join(d,e.name)] : []);
+  const files = walk(ROOT), rel = f => path.relative(ROOT,f).split(path.sep).join('/');
+  const txt = {}; files.forEach(f => txt[rel(f)] = fs.readFileSync(f,'utf8'));
+  const noSvg = h => h.replace(/<svg[\s\S]*?<\/svg>/g,'').replace(/<style[\s\S]*?<\/style>/g,'');   /* 그림 좌표·색 코드(#D5…)는 글이 아니다 */
+  if (!files.some(f=>rel(f)==='index.html')) bad('홈페이지', '루트 index.html이 없다');
+  else {
+    /* 3-1. 아이 이름·관찰 원문 */
+    const leak = Object.entries(txt).filter(([k,h]) => /시우|기록 속 아기|이 집 기록/.test(h) || /(^|[^A-Za-z0-9])D\d{1,3}(?!\d)/.test(noSvg(h))).map(([k])=>k);
+    leak.length ? bad('홈페이지에 아이 이름·관찰 원문', leak.slice(0,4).join(', ')) : ok('홈페이지 '+files.length+'쪽 — 아이 이름·관찰 원문(D번호) 없음');
+    /* 3-2. 판정·선별 문구 (앱의 금지 목록 그대로, 여기선 전부 0회) + 실시간 진료 배지 */
+    const words = Object.keys(ALLOWED).concat(['진료중','진료종료']);
+    const hits = []; for (const [k,h] of Object.entries(txt)) for (const w of words) if (h.includes(w)) hits.push(k+':'+w);
+    hits.length ? bad('홈페이지에 판정·실시간 문구', hits.slice(0,5).join(', ')) : ok('홈페이지 판정·선별·실시간 문구 0회 ('+words.length+'종)');
+    /* 3-3. 달빛 — 지역 쪽마다 «전화로 확인»+응급의료포털, 병원 수 합 = 앱 데이터 */
+    const moonPages = Object.keys(txt).filter(k=>/^moon\/(?!index)[a-z-]+\.html$/.test(k));
+    const noNote = moonPages.filter(k=>!txt[k].includes('가기 전에 꼭 전화로 확인')||!txt[k].includes('e-gen.or.kr'));
+    const nHosp = moonPages.reduce((a,k)=>a+(txt[k].match(/<li class="hosp">/g)||[]).length,0);
+    const mm = js.match(/const MOON=\[([\s\S]*?)\n\];/); const nMoon = mm ? eval('['+mm[1]+']').length : -1;
+    !moonPages.length ? bad('달빛 지역 쪽 없음')
+      : noNote.length ? bad('달빛 쪽에 «전화로 확인» 안내 없음', noNote.join(', '))
+      : nHosp!==nMoon ? bad('달빛 쪽 병원 수가 앱과 다름', '쪽 '+nHosp+' / 앱 '+nMoon+' — 사이트를 다시 만들어야 함')
+      : ok('달빛 '+moonPages.length+'개 지역 쪽 — 병원 '+nHosp+'곳(앱과 같음) · 전화 확인 안내');
+    /* 3-4. 개월수별 놀이 — 앱의 놀이가 빠짐없이, 한 번씩 */
+    if (PLAYS) {
+      const playPages = Object.keys(txt).filter(k=>/^play\/\d+\.html$/.test(k));
+      const all = playPages.map(k=>txt[k]).join('\n');
+      const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const miss = PLAYS.filter(p=>(all.split('<h3>'+esc(p.name)+'</h3>').length-1)!==1).map(p=>p.n);
+      miss.length ? bad('놀이 쪽이 앱과 다름', '놀이 #'+miss.slice(0,8).join(',#')+' — 사이트를 다시 만들어야 함')
+                  : ok('개월수별 놀이 '+playPages.length+'쪽 — 앱의 놀이 '+PLAYS.length+'개 빠짐없이');
+    }
+    /* 3-5. 광고(파트너스) 링크가 있는 쪽엔 공정위 문구 */
+    const adNo = Object.entries(txt).filter(([k,h])=>h.includes('link.coupang.com')&&!h.includes('쿠팡 파트너스 활동의 일환으로')).map(([k])=>k);
+    adNo.length ? bad('파트너스 링크에 공정위 문구 없음', adNo.join(', ')) : ok('파트너스 링크 쪽 공정위 문구 있음');
+    /* 3-6. 구조화 데이터·sitemap·내부 링크 */
+    const ldBad=[]; for (const [k,h] of Object.entries(txt)) for (const m of h.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) { try{ JSON.parse(m[1]); }catch(e){ ldBad.push(k); } }
+    const exists = u => { let p=u.split(/[?#]/)[0]; if(p.endsWith('/')) p+='index.html'; return fs.existsSync(path.join(ROOT,p.replace(/^\//,''))); };
+    const sm = fs.existsSync(path.join(ROOT,'sitemap.xml')) ? fs.readFileSync(path.join(ROOT,'sitemap.xml'),'utf8') : '';
+    const locs = [...sm.matchAll(/<loc>https:\/\/goseumi-app\.github\.io(\/[^<]*)<\/loc>/g)].map(m=>m[1]);
+    const smBad = locs.filter(u=>!exists(u));
+    const unlisted = Object.keys(txt).filter(k=>k!=='404.html'&&!locs.includes('/'+k.replace(/index\.html$/,'')));
+    const broken = new Set();
+    for (const [k,h] of Object.entries(txt)) for (const m of h.matchAll(/(?:href|src)="(\/[^"]*)"/g)) if(!exists(m[1])) broken.add(k+'→'+m[1]);
+    for (const [k,h] of Object.entries(txt)) for (const m of h.matchAll(/srcset="([^"]*)"/g)) m[1].split(',').map(x=>x.trim().split(' ')[0]).filter(u=>u.startsWith('/')).forEach(u=>{ if(!exists(u)) broken.add(k+'→'+u); });
+    ldBad.length ? bad('구조화 데이터 문법 오류', ldBad.join(', '))
+      : !locs.length ? bad('sitemap.xml 없음')
+      : smBad.length||unlisted.length ? bad('sitemap 불일치', [...smBad.map(u=>'없는 주소 '+u), ...unlisted.map(u=>'빠짐 '+u)].slice(0,4).join(', '))
+      : broken.size ? bad('내부 링크 깨짐 '+broken.size+'곳', [...broken].slice(0,4).join(', '))
+      : ok('sitemap '+locs.length+'주소 · 내부 링크·그림 전부 있음 · 구조화 데이터 정상');
+  }
+}
+/* 3-7. 홈페이지를 실제 브라우저로 — 오류 0 · 미리 보기 작동 · 낮/어두운 모드 글자 대비 */
+if (fs.existsSync(path.join(ROOT,'index.html'))) {
+  const site = http.createServer((q,r)=>{
+    let p = decodeURIComponent(q.url.split('?')[0]); if(p.endsWith('/')) p+='index.html';
+    const f = path.join(ROOT, p);
+    if(!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()){ r.writeHead(404,{'Content-Type':MIME['.html']}); return r.end(fs.existsSync(path.join(ROOT,'404.html'))?fs.readFileSync(path.join(ROOT,'404.html')):''); }
+    r.writeHead(200, {'Content-Type': MIME[path.extname(f)] || 'application/octet-stream'}); r.end(fs.readFileSync(f));
+  });
+  await new Promise(r=>site.listen(8124,r));
+  const SB='http://localhost:8124';
+  const errs=[], low=[];
+  const samples=['/','/play/8.html','/moon/','/moon/gyeonggi.html','/404.html'].filter(u=>fs.existsSync(path.join(ROOT,(u.endsWith('/')?u+'index.html':u).slice(1))));
+  for (const scheme of ['light','dark']) for (const u of samples) {
+    const ctx = await browser.newContext({viewport:{width:390,height:844}, colorScheme:scheme});
+    const page = await ctx.newPage(); page.on('pageerror', e=>errs.push(u+' '+e.message));
+    await page.goto(SB+u, {waitUntil:'load'});
+    await page.evaluate(()=>{ document.querySelectorAll('.reveal').forEach(e=>e.classList.add('in')); document.querySelectorAll('details').forEach(d=>d.open=true);
+      document.querySelectorAll('[role=tabpanel]').forEach(p=>p.hidden=false); });
+    await page.waitForTimeout(700);
+    const b_ = await page.evaluate(()=>{
+      /* 반투명 배경(color-mix 등)은 부모 색 위에 겹쳐서 실제 보이는 색으로 계산한다 */
+      const parse=c=>{let m; if((m=c.match(/^rgba?\(([^)]+)\)/))){const v=m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);return [v[0],v[1],v[2],v[3]??1]}
+        if((m=c.match(/^color\(srgb ([^)]+)\)/))){const v=m[1].split(/[\s\/]+/).filter(Boolean).map(Number);return [v[0]*255,v[1]*255,v[2]*255,v[3]??1]} return [255,255,255,1]};
+      const over=(f,b)=>[f[0]*f[3]+b[0]*(1-f[3]),f[1]*f[3]+b[1]*(1-f[3]),f[2]*f[3]+b[2]*(1-f[3]),1];
+      const lum=a=>{const m=a.slice(0,3).map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)});return .2126*m[0]+.7152*m[1]+.0722*m[2]};
+      const bgOf=el=>{const ch=[];let e=el;while(e){ch.push(e);e=e.parentElement} let bg=[255,255,255,1];
+        for(const x of ch.reverse()){const s=getComputedStyle(x); if(s.backgroundImage&&s.backgroundImage!=='none'&&!/gradient/.test(s.backgroundImage)) return null;
+          const c=parse(s.backgroundColor); if(c[3]>0) bg=over(c,bg);} return bg};
+      const out=[];
+      document.querySelectorAll('main *, header *, footer *').forEach(el=>{
+        const t=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent.trim()).join('').trim(); if(t.length<2) return;
+        const s=getComputedStyle(el); if(s.display==='none'||s.visibility==='hidden') return;
+        const r=el.getBoundingClientRect(); if(r.width<4||r.height<4) return;
+        const bg=bgOf(el); if(!bg) return;
+        let fg=parse(s.color); if(fg[3]<1) fg=over(fg,bg);
+        const c=(Math.max(lum(fg),lum(bg))+.05)/(Math.min(lum(fg),lum(bg))+.05);
+        const big=parseFloat(s.fontSize)>=18.66&&+s.fontWeight>=700||parseFloat(s.fontSize)>=24;
+        if(c<(big?3:4.5)) out.push(t.slice(0,16)+' ('+c.toFixed(2)+')');
+      });
+      return [...new Set(out)];
+    });
+    b_.forEach(x=>low.push((scheme==='dark'?'어둠':'낮')+u+': '+x));
+    if (u==='/' && scheme==='light') {
+      const demo = await page.evaluate(async()=>{ const i=document.querySelector('#demo-birth'); if(!i) return -1;
+        const t=new Date(); t.setMonth(t.getMonth()-6); i.value=t.toISOString().slice(0,10);
+        document.querySelector('#demo-form').requestSubmit(); for(let k=0;k<40&&!document.querySelector('.dplay');k++) await new Promise(r=>setTimeout(r,100));
+        return document.querySelectorAll('.dplay').length; });
+      demo===4 ? ok('홈페이지 «생일 넣고 미리 보기» — 놀이 4가지 나옴') : bad('홈페이지 미리 보기', '놀이 '+demo+'개');
+    }
+    await ctx.close();
+  }
+  errs.length ? bad('홈페이지 자바스크립트 오류', [...new Set(errs)].slice(0,3).join(' / ')) : ok('홈페이지 자바스크립트 오류 0건 ('+samples.length+'쪽 × 낮·어둠)');
+  low.length ? bad('홈페이지 글자 대비 4.5 미만 '+low.length+'곳', low.slice(0,10).join(' · ')) : ok('홈페이지 글자 대비 — '+samples.length+'쪽 × 낮·어둠 모두 통과');
+  site.close();
+}
+
 await browser.close(); srv.close();
 
 /* ─────────────── 결과 ─────────────── */
@@ -319,7 +431,7 @@ const summary = [
   `## 고슴이 자동 점검 — ${results.length - failed.length}/${results.length} 통과`, '',
   '| | 항목 | 내용 |', '|---|---|---|', ...lines, '',
   failed.length ? `> ❌ **${failed.length}건 실패.** 위 표의 ❌ 줄을 보세요.`
-                : '> ✅ 전부 통과. 데이터·화면·대비·뒤로가기·백업·오프라인 모두 정상입니다.'
+                : '> ✅ 전부 통과. 앱(데이터·화면·대비·뒤로가기·백업·오프라인)과 홈페이지(원문·문구·달빛·놀이·링크·대비) 모두 정상입니다.'
 ].join('\n');
 
 console.log(summary.replace(/\|/g,' ').replace(/^ *---.*$/gm,''));
