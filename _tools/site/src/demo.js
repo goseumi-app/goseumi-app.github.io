@@ -37,8 +37,12 @@
     out.innerHTML='<div class="demo-empty"><p>놀이를 고르는 중…</p></div>';
     load().then(function(j){
       var A=age(b), M=Math.min(A.m,j.maxM), list=pick(j.plays,M);
+      /* 9개월부터는 구간 놀이(to) — 지금 달이 들어 있는 구간의 시작 달 페이지로 */
+      var start=Math.max.apply(null,j.plays.filter(function(p){ return p.m<=M; }).map(function(p){ return p.m; }));
+      var end=Math.max.apply(null,j.plays.filter(function(p){ return p.m===start; }).map(function(p){ return p.to==null?p.m:p.to; }));
+      var rng=(end>start?start+"~"+end:start)+"개월";
       var h='<p class="demo-age">생후 '+A.m+'개월 '+A.d+'일 — 오늘 해볼 놀이</p>';
-      if(A.m>j.maxM) h+='<p class="small">놀이는 지금 <b>생후 '+j.maxM+'개월까지</b> 있어요 — 한 아기의 실제 기록에서 나오기 때문이에요. 아래는 '+j.maxM+'개월 놀이예요. 잠·이유식·기록은 개월수와 상관없이 쓸 수 있어요.</p>';
+      if(A.m>j.maxM) h+='<p class="small">놀이는 지금 <b>생후 '+j.maxM+'개월까지</b> 있어요. 아래는 '+rng+' 놀이예요. 잠·이유식·기록은 개월수와 상관없이 쓸 수 있어요.</p>';
       else h+='<p class="small">인지·신체·사회성·언어에서 하나씩. 다 할 필요 없어요 — 끌리는 하나면 충분해요.</p>';
       h+='<div class="demo-grid">';
       list.forEach(function(p){
@@ -46,7 +50,7 @@
           +(p.mat?'<p class="mat">준비물 · '+esc(p.mat)+'</p>':'')+'</article>';
       });
       h+='</div><div class="demo-cta"><a class="btn btn-pri btn-lg" href="'+form.getAttribute("data-app")+'" id="demo-go">이 생일로 고슴이 시작하기 →</a>'
-        +'<a class="btn btn-sec" href="'+form.getAttribute("data-month")+M+'.html">'+(M===0?'신생아':'생후 '+M+'개월')+' 놀이 전부 보기</a></div>';
+        +'<a class="btn btn-sec" href="'+form.getAttribute("data-month")+start+'.html">'+(start===0?'신생아':'생후 '+rng)+' 놀이 전부 보기</a></div>';
       out.innerHTML=h;
       document.getElementById("demo-go").addEventListener("click",function(){
         try{ localStorage.setItem("siwoo.prefill",JSON.stringify({birth:b})); }catch(_){}

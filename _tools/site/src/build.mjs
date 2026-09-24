@@ -23,10 +23,14 @@ const PARTNER=JSON.parse(js.match(/const PARTNER_DEFAULT=(\{[\s\S]*?\})\s*;/)[1]
 const MOON=eval('['+js.match(/const MOON=\[([\s\S]*?)\n\];/)[1]+']');
 const MOON_BASE=js.match(/const MOON_BASE="([^"]+)"/)[1];
 const REC_DAYS=+js.match(/const REC_DAYS=(\d+)/)[1];
-const MAX_M=Math.max(...PLAYS.map(p=>p.m));
+/* 9개월부터는 «구간» 놀이(m=구간 시작, to=구간 끝). 페이지는 구간마다 하나(/play/18.html = 18~23개월) */
+const endOf=p=>p.to==null?p.m:p.to;
+const MAX_M=Math.max(...PLAYS.map(endOf));
+const REC_MAX_M=Math.max(...PLAYS.filter(p=>p.srcRaw).map(p=>p.m));      /* 실제 관찰 기록에서 나온 놀이가 있는 가장 큰 월령 */
+const MAX_TXT=(MAX_M+1)%12===0?`${MAX_M}개월(만 ${(MAX_M+1)/12}세 전)`:`${MAX_M}개월`;
 const DOMS=['인지','신체','사회정서','언어'];
 const DOM_LABEL={'인지':'인지','신체':'신체·운동','사회정서':'사회성·정서','언어':'언어·의사소통'};
-const DOM_DESC={'인지':'보고, 비교하고, 예측하고, 원인을 찾는 것','신체':'뒤집고, 쥐고, 밀고, 기는 것','사회정서':'사람을 보고, 웃고, 안정을 찾는 것','언어':'소리를 주고받고, 리듬을 느끼는 것'};
+const DOM_DESC={'인지':'보고, 비교하고, 예측하고, 원인을 찾는 것','신체':'쥐고, 기고, 걷고, 뛰는 것','사회정서':'사람과 마음을 주고받고, 안정을 찾는 것','언어':'소리와 말을 주고받고, 리듬을 느끼는 것'};
 const ICONS=JSON.parse(fs.readFileSync(path.join(SRC,'icons.json'),'utf8'));
 const WORDMARK=fs.readFileSync(path.join(SRC,'wordmark.svg'),'utf8');
 const QR=fs.readFileSync(path.join(SRC,'qr.svg'),'utf8');
@@ -39,8 +43,10 @@ const [my,mm]=MOON_BASE.split('-'); const MOON_WHEN=`${my}년 ${+mm}월`;
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const rich=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/«/g,'«').replace(/»/g,'»');
 const ico=(n,cls='ico')=>ICONS[n]?`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`:'';
-const mName=m=>m===0?'신생아':`생후 ${m}개월`;
-const mShort=m=>m===0?'신생아':`${m}개월`;
+const bandEnd=m=>Math.max(m,...PLAYS.filter(p=>p.m===m).map(endOf));
+const mRange=m=>bandEnd(m)>m?`${m}~${bandEnd(m)}개월`:`${m}개월`;
+const mName=m=>m===0?'신생아':`생후 ${mRange(m)}`;
+const mShort=m=>m===0?'신생아':mRange(m);
 function mascot(mood='happy',cls='mascot'){
   const eyes=mood==='happy'?'<path d="M46 56 q4 -5 8 0" stroke="#4A392E" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M66 56 q4 -5 8 0" stroke="#4A392E" stroke-width="2.6" fill="none" stroke-linecap="round"/>'
     :'<circle cx="50" cy="55" r="3.2" fill="#4A392E"/><circle cx="70" cy="55" r="3.2" fill="#4A392E"/>';
@@ -58,7 +64,11 @@ function webWarn(p){
 }
 for(const p of PLAYS){ for(const f of ['name','mat','how','down','up','label']) if(p[f]&&OBS.test(p[f])) throw new Error(`놀이 #${p.n} ${f}에 관찰 원문 표식`);
   if(p.mathEye&&OBS.test(JSON.stringify(p.mathEye))) throw new Error(`놀이 #${p.n} 수학의 눈에 관찰 원문 표식`); }
-function matKeyword(mat){ const m=(mat||'').split(/[,(·]/)[0].trim(); if(!m||m==='없음'||m.startsWith('아무')||m.startsWith('부모')) return null; return m.replace(/^아기\s*/,'아기 '); }
+/* 준비물 → 쇼핑 키워드 규칙은 앱의 SHOP-KEYWORD 구간을 그대로 가져다 쓴다 — 앱과 홈페이지의 «찾아보기» 버튼이 어긋나지 않게.
+   (옛 판 앱에는 그 구간이 없으니 그때는 예전 규칙으로) */
+const SHOP_SRC=(js.match(/\/\* SHOP-KEYWORD-BEGIN[^*]*\*\/([\s\S]*?)\/\* SHOP-KEYWORD-END \*\//)||[])[1];
+const matKeyword=SHOP_SRC? new Function(SHOP_SRC+'\nreturn matKeyword;')()
+  : function(mat){ const m=(mat||'').split(/[,(·]/)[0].trim(); if(!m||m==='없음'||m.startsWith('아무')||m.startsWith('부모')) return null; return m.replace(/^아기\s*/,'아기 '); };
 const buyLink=mat=>{ const k=matKeyword(mat); return k&&PARTNER[k]?{k,url:PARTNER[k]}:null; };
 const AD_NOTE='이 게시물은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.';
 const cdcLabel=l=>l?esc(l).replace(/^\[CDC (\d+)개월\]/,'CDC $1개월 이정표 —').replace(/^\[WHO ([^\]]+)\]/,'WHO $1 —'):'';
@@ -142,13 +152,16 @@ ${p.ref?`<p class="small" style="margin:12px 0 0">출처: ${esc(p.ref)}</p>`:''}
 }
 for(const m of months){
   const L=byM[m], n=L.length, url=`${BASE}/play/${m}.html`;
-  const h1=m===0?`신생아(생후 0개월) 아기 놀이 ${n}가지`:`생후 ${m}개월 아기 놀이 ${n}가지`;
-  const title=`${m===0?`신생아 놀이 ${n}가지 (생후 0개월)`:`생후 ${m}개월 아기 놀이 ${n}가지`} — 집에서 5분 발달 놀이 | 고슴이`;
+  const e=bandEnd(m), band=e>m, kid=m>=12?'아이':'아기';
+  const h1=m===0?`신생아(생후 0개월) 아기 놀이 ${n}가지`:`생후 ${mRange(m)} 아기 놀이 ${n}가지`;
+  const title=`${m===0?`신생아 놀이 ${n}가지 (생후 0개월)`:`생후 ${mRange(m)} 아기 놀이 ${n}가지`} — 집에서 5분 발달 놀이 | 고슴이`;
+  const each=band?Array.from({length:e-m+1},(_,i)=>`${m+i}개월`).join('·'):'';
+  const pRec=L.filter(p=>p.src&&p.src.length).length, pRef=L.filter(p=>p.ref).length;
   const names=L.slice(0,3).map(p=>p.name).join(', ');
   const desc=`${mName(m)} 아기와 집에서 해볼 발달 놀이 ${n}가지 — ${names} 등. 준비물·방법·쉽게/어렵게 하는 법까지 한 번에. 시기는 미국 CDC·WHO 이정표 기준.`;
   const hasAd=L.some(p=>buyLink(p.mat));
   const doms=DOMS.map(d=>[d,L.filter(p=>p.dom===d)]).filter(([,x])=>x.length);
-  const prev=months.includes(m-1)?m-1:null, next=months.includes(m+1)?m+1:null;
+  const mi=months.indexOf(m), prev=mi>0?months[mi-1]:null, next=mi<months.length-1?months[mi+1]:null;
   const ld=[ldCrumbs([['고슴이','/'],['개월수별 놀이','/play/'],[mName(m),`/play/${m}.html`]]),
     {"@context":"https://schema.org","@type":"ItemList","name":h1,"numberOfItems":n,"itemListElement":L.map((p,i)=>({"@type":"ListItem","position":i+1,"name":p.name,"url":`${url}#p${p.n}`}))}];
   const body=`${head({title,desc,url,og:`play-${m}`,ogAlt:h1,ld})}
@@ -156,14 +169,14 @@ ${top()}
 ${crumbs([['고슴이','/'],['개월수별 놀이','/play/'],[mName(m),null]])}
 <main id="main" class="wrap" style="max-width:860px">
 <div class="page-head"><h1>${h1}</h1>
-<p class="lead">${mName(m)} 무렵 집에서 해볼 만한 놀이예요. 영역별로 골고루 모았지만 다 할 필요는 없어요 — <b>오늘 끌리는 하나면 충분해요.</b></p>
+<p class="lead">${band?`${each} ${kid}와 집에서 해볼 만한 놀이예요.`:`${mName(m)} 무렵 집에서 해볼 만한 놀이예요.`} 영역별로 골고루 모았지만 다 할 필요는 없어요 — <b>오늘 끌리는 하나면 충분해요.</b></p>
 <div class="jump">${doms.map(([d,x])=>`<a class="chip" href="#d-${d}">${DOM_LABEL[d]} <b>${x.length}</b></a>`).join('')}</div>
 ${hasAd?`<p class="ad-note">${AD_NOTE}</p>`:''}
 </div>
 ${doms.map(([d,x])=>`<section class="dom-sec" id="d-${d}" aria-labelledby="h-${d}"><h2 id="h-${d}"><span class="tag t-${d}">${DOM_LABEL[d]}</span> ${DOM_DESC[d]}</h2><div class="plays">${x.map(playArticle).join('\n')}</div></section>`).join('\n')}
 ${appCta('이 중 오늘 할 하나만 골라 드려요','생일을 넣으면 매일 영역별로 하나씩. 해본 건 ✓ 한 번이면 기록돼요.','생일 넣고 시작하기')}
 <nav class="pn" aria-label="다른 개월수">${prev!==null?`<a class="prev" href="/play/${prev}.html"><small>← 이전</small>${mName(prev)} 놀이</a>`:'<span></span>'}${next!==null?`<a class="next" href="/play/${next}.html"><small>다음 →</small>${mName(next)} 놀이</a>`:`<a class="next" href="/play/"><small>모두 보기 →</small>개월수별 놀이</a>`}</nav>
-<p class="src-line">시기 표시는 미국 CDC 발달 이정표(Learn the Signs. Act Early.)와 WHO 운동발달 연구를 옮긴 것이에요 — 발달 검사가 아니며 검사를 대체하지 않아요. 걱정되면 소아청소년과에서 상담하세요. 놀이 방법은 한 아기의 ${REC_DAYS}일 관찰 기록(${nRec}가지)과 CDC 공식 활동 팁(${nRef}가지)에서 왔어요. 이 페이지는 CDC·HHS의 보증을 받지 않았어요.</p>
+<p class="src-line">시기 표시는 미국 CDC 발달 이정표(Learn the Signs. Act Early.)와 WHO 운동발달 연구를 옮긴 것이에요 — 발달 검사가 아니며 검사를 대체하지 않아요. 걱정되면 소아청소년과에서 상담하세요. 이 페이지의 놀이 방법은 ${pRec?`한 아기의 ${REC_DAYS}일 관찰 기록(${pRec}가지)${pRef?'과 ':''}`:''}${pRef?`CDC 공식 이정표·활동 팁(${pRef}가지)`:''}에서 왔어요. 이 페이지는 CDC·HHS의 보증을 받지 않았어요.</p>
 </main>
 ${foot()}
 </body></html>`;
@@ -171,14 +184,14 @@ ${foot()}
 }
 { /* 놀이 모음 첫 화면 */
   const url=`${BASE}/play/`, title=`개월수별 아기 놀이 — 신생아부터 ${MAX_M}개월까지 ${PLAYS.length}가지 | 고슴이`;
-  const desc=`신생아부터 생후 ${MAX_M}개월까지, 집에 있는 물건으로 5분이면 되는 아기 발달 놀이 ${PLAYS.length}가지를 개월수별로 모았어요. 시기는 미국 CDC·WHO 이정표 기준.`;
+  const desc=`신생아부터 생후 ${MAX_TXT}까지, 집에 있는 물건으로 5분이면 되는 아기 발달 놀이 ${PLAYS.length}가지를 개월수별로 모았어요. 시기는 미국 CDC·WHO 이정표 기준.`;
   const ld=[ldCrumbs([['고슴이','/'],['개월수별 놀이','/play/']]),{"@context":"https://schema.org","@type":"ItemList","itemListElement":months.map((m,i)=>({"@type":"ListItem","position":i+1,"name":`${mName(m)} 아기 놀이`,"url":`${BASE}/play/${m}.html`}))}];
   const body=`${head({title,desc,url,og:'play',ogAlt:'개월수별 아기 놀이',ld})}
 ${top()}
 ${crumbs([['고슴이','/'],['개월수별 놀이',null]])}
 <main id="main" class="wrap" style="max-width:960px">
 <div class="page-head"><h1>개월수별 아기 놀이</h1>
-<p class="lead">신생아부터 생후 ${MAX_M}개월까지 <b>${PLAYS.length}가지</b>. 집에 있는 물건으로 5분이면 되는 놀이만 모았어요. 시기는 미국 CDC·WHO 발달 이정표, 방법은 한 아기의 실제 관찰 기록과 CDC 공식 활동 팁에서 왔어요.</p></div>
+<p class="lead">신생아부터 생후 ${MAX_TXT}까지 <b>${PLAYS.length}가지</b>. 집에 있는 물건으로 5분이면 되는 놀이만 모았어요. 시기는 미국 CDC·WHO 발달 이정표예요. 생후 ${REC_MAX_M}개월까지는 한 아기의 실제 관찰 기록에서, 그 뒤는 CDC 공식 이정표·활동 팁에서 왔어요.</p></div>
 <div class="month-grid">${months.map(m=>`<a href="/play/${m}.html"><b>${mShort(m)}</b><span>놀이 ${byM[m].length}가지 · ${DOMS.filter(d=>byM[m].some(p=>p.dom===d)).map(d=>DOM_LABEL[d].split('·')[0]).join('·')}</span></a>`).join('')}</div>
 <section class="dom-sec"><h2>놀이는 네 영역으로 나눠요</h2>
 <div class="nots" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">${DOMS.map(d=>`<div class="not"><h3><span class="tag t-${d}">${DOM_LABEL[d]}</span></h3><p>${DOM_DESC[d]}. 모음 ${PLAYS.filter(p=>p.dom===d).length}가지.</p></div>`).join('')}</div>
@@ -260,7 +273,7 @@ ${foot()}
     ['아이폰에서도 되나요?','네. 사파리에서 열고 공유 단추 → «홈 화면에 추가»를 누르면 앱처럼 아이콘으로 열려요. 안드로이드는 크롬에서 «앱 설치»가 떠요.'],
     ['발달 검사를 해 주나요?','아니요. 고슴이는 빠르다·느리다를 판정하지 않아요. 놀이의 시기 표시는 미국 CDC 이정표와 WHO 연구를 옮긴 것이고, 걱정되는 게 있으면 소아청소년과에서 상담하시길 권해요. 대신 걱정되는 장면을 모아 진료실에 들고 갈 A4 요약을 만들어 드려요.'],
     ['달빛어린이병원 정보는 실시간인가요?',`아니요. ${MOON_WHEN} 보건복지부 지정 목록이라, 진료 여부는 가기 전에 꼭 전화로 확인해 주세요. 지금 문을 열었는지는 응급의료포털(E-Gen)에서 볼 수 있어요.`],
-    ['몇 개월까지 쓸 수 있나요?',`잠·이유식·예방접종·하루 기록은 개월수와 상관없이 쓸 수 있어요. 놀이는 지금 생후 ${MAX_M}개월까지 있고, 기록이 쌓이는 대로 늘어나요.`],
+    ['몇 개월까지 쓸 수 있나요?',`잠·이유식·예방접종·하루 기록은 개월수와 상관없이 쓸 수 있어요. 놀이는 신생아부터 생후 ${MAX_TXT}까지 있어요 — 생후 ${REC_MAX_M}개월까지는 한 아기의 실제 관찰 기록에서, 그 뒤는 미국 CDC 공식 이정표·활동 팁에서 왔어요.`],
     ['카톡에서 열었더니 홈 화면 추가가 안 돼요','카톡·인스타 같은 앱 안의 브라우저는 홈 화면 추가를 막아 둬요. 거기서 적은 기록도 그 앱 안에만 남고요. 화면 위쪽 안내 띠의 «크롬으로 열기»(아이폰은 «사파리로 여는 법»)를 눌러 주세요.'],
   ];
   const ld=[
@@ -349,15 +362,15 @@ ${top()}
 <div class="reveal"><span class="eyebrow">${ico('book-open')}만든 이야기</span>
 <h2 class="h-sec" id="story-h" style="margin-top:14px">아기 아빠가,<br>매일 쓰려고 만들었어요</h2>
 <p class="quote" style="margin-top:16px">«지금 개월수에 맞는 놀이를<br>딱 하나만 골라 줬으면.»</p>
-<p class="lead">오늘 뭐 하고 놀아 줄지 막막했던 날에 시작했어요. 놀이 방법은 한 아기의 ${REC_DAYS}일 관찰 기록에서 나왔고, 기록이 비어 있던 자리는 미국 CDC 공식 활동 팁으로 채웠어요. 아기가 자라는 만큼 놀이도 자라요.</p>
-<div class="pills"><span class="chip">관찰 기록에서 <b>${nRec}가지</b></span><span class="chip">CDC 공식 팁 <b>${nRef}가지</b></span><span class="chip">출처 없는 놀이 <b>0</b></span></div>
+<p class="lead">오늘 뭐 하고 놀아 줄지 막막했던 날에 시작했어요. 놀이 방법은 한 아기의 ${REC_DAYS}일 관찰 기록에서 나왔고(생후 0~${REC_MAX_M}개월), 기록이 비어 있던 자리와 그 뒤 생후 ${MAX_TXT}까지는 미국 CDC 공식 발달 이정표·활동 팁으로 채웠어요. 기록이 쌓이는 만큼 놀이도 자라요.</p>
+<div class="pills"><span class="chip">관찰 기록에서 <b>${nRec}가지</b></span><span class="chip">CDC 이정표·팁 <b>${nRef}가지</b></span><span class="chip">출처 없는 놀이 <b>0</b></span></div>
 </div></div></section>
 
 <section class="sec" aria-labelledby="hub-h"><div class="wrap">
 <div class="sec-head reveal"><span class="eyebrow">${ico('search')}앱 없이 둘러보기</span><h2 class="h-sec" id="hub-h">검색하다 들르셨나요?</h2>
 <p class="lead">개월수별 놀이와 지역별 달빛어린이병원은 앱을 열지 않아도 볼 수 있어요.</p></div>
 <div class="hub-grid">
-<div class="hub reveal"><h3>${ico('puzzle')}개월수별 아기 놀이</h3><p>신생아부터 생후 ${MAX_M}개월까지 ${PLAYS.length}가지 — 준비물과 방법까지.</p><div class="chips">${months.map(m=>`<a class="chip" href="/play/${m}.html">${mShort(m)}</a>`).join('')}<a class="chip" href="/play/"><b>전체</b></a></div></div>
+<div class="hub reveal"><h3>${ico('puzzle')}개월수별 아기 놀이</h3><p>신생아부터 생후 ${MAX_TXT}까지 ${PLAYS.length}가지 — 준비물과 방법까지.</p><div class="chips">${months.map(m=>`<a class="chip" href="/play/${m}.html">${mShort(m)}</a>`).join('')}<a class="chip" href="/play/"><b>전체</b></a></div></div>
 <div class="hub reveal"><h3>${ico('hospital')}지역별 달빛어린이병원</h3><p>밤·주말·공휴일 소아 진료 ${MOON.length}곳 — 주소·전화·지도.</p><div class="chips">${regions.map(r=>`<a class="chip" href="/moon/${SLUG[r]}.html">${FULL[r]} <b>${MOON.filter(x=>x[1]===r).length}</b></a>`).join('')}</div></div>
 </div></div></section>
 
@@ -409,7 +422,7 @@ Allow: /
 Sitemap: ${BASE}/sitemap.xml
 ${VERIFY.daum?VERIFY.daum+'\n':''}`);
 write(`${INDEXNOW_KEY}.txt`,INDEXNOW_KEY);   /* 내용은 열쇠 그대로 — 줄바꿈도 붙이지 않는다 */
-write('assets/plays.json',JSON.stringify({maxM:MAX_M,plays:PLAYS.map(p=>({n:p.n,name:p.name,m:p.m,dom:p.dom,how:p.how,mat:p.mat}))}));
+write('assets/plays.json',JSON.stringify({maxM:MAX_M,plays:PLAYS.map(p=>Object.assign({n:p.n,name:p.name,m:p.m},p.to==null?{}:{to:p.to},{dom:p.dom,how:p.how,mat:p.mat}))}));
 for(const f of ['site.js','demo.js']) fs.copyFileSync(path.join(SRC,f),path.join(OUT,'assets',f));
 write('og-jobs.json',JSON.stringify(ogJobs,null,1));
 console.log(`built ${pages.length} pages (+404) · plays ${PLAYS.length} (0~${MAX_M}개월) · moon ${MOON.length} in ${regions.length} regions · og jobs ${ogJobs.length}`);
