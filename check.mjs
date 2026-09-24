@@ -335,7 +335,7 @@ async function fresh(opts={}) {
     const mm = js.match(/const MOON=\[([\s\S]*?)\n\];/); const nMoon = mm ? eval('['+mm[1]+']').length : -1;
     !moonPages.length ? bad('달빛 지역 쪽 없음')
       : noNote.length ? bad('달빛 쪽에 «전화로 확인» 안내 없음', noNote.join(', '))
-      : nHosp!==nMoon ? bad('달빛 쪽 병원 수가 앱과 다름', '쪽 '+nHosp+' / 앱 '+nMoon+' — 사이트를 다시 만들어야 함')
+      : nHosp!==nMoon ? bad('달빛 쪽 병원 수가 앱과 다름', '쪽 '+nHosp+' / 앱 '+nMoon+' — 홈페이지를 다시 만들어야 함 (_tools/site/README.md)')
       : ok('달빛 '+moonPages.length+'개 지역 쪽 — 병원 '+nHosp+'곳(앱과 같음) · 전화 확인 안내');
     /* 3-4. 개월수별 놀이 — 앱의 놀이가 빠짐없이, 한 번씩 */
     if (PLAYS) {
@@ -343,7 +343,7 @@ async function fresh(opts={}) {
       const all = playPages.map(k=>txt[k]).join('\n');
       const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       const miss = PLAYS.filter(p=>(all.split('<h3>'+esc(p.name)+'</h3>').length-1)!==1).map(p=>p.n);
-      miss.length ? bad('놀이 쪽이 앱과 다름', '놀이 #'+miss.slice(0,8).join(',#')+' — 사이트를 다시 만들어야 함')
+      miss.length ? bad('놀이 쪽이 앱과 다름', '놀이 #'+miss.slice(0,8).join(',#')+' — 홈페이지를 다시 만들어야 함 (_tools/site/README.md)')
                   : ok('개월수별 놀이 '+playPages.length+'쪽 — 앱의 놀이 '+PLAYS.length+'개 빠짐없이');
     }
     /* 3-5. 광고(파트너스) 링크가 있는 쪽엔 공정위 문구 */
