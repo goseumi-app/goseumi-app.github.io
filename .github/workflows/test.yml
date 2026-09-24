@@ -8,6 +8,11 @@ on:
       - 'www/**'
       - 'check.mjs'
       - '.github/workflows/test.yml'
+      - '*.html'
+      - 'play/**'
+      - 'moon/**'
+      - 'assets/**'
+      - 'sitemap.xml'
 
 permissions:
   contents: read
