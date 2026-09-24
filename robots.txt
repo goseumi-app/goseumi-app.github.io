@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://goseumi-app.github.io/sitemap.xml
