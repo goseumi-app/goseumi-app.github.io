@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # ubuntu-latest는 2026-10-19부터 Ubuntu 26으로 바뀜 — 안드로이드 SDK·도구 구성이 달라져 빌드가 깨지지 않게 고정
     env:
       KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
