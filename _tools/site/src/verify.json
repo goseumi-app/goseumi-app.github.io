@@ -1,6 +1,6 @@
 {
  "_설명": "검색엔진 «내 사이트 맞아요» 확인 값. 선생님이 받은 메타 태그를 통째로(또는 content 값만) 붙여 넣고 make.sh로 다시 빌드하면 첫 페이지(index.html)와 robots.txt(다음)만 바뀐다. 한 번 넣으면 다시 빌드해도 남는다.",
- "naver": "",
+ "naver": "e3a6f0d2fab255da5bd9954d2615eb6dce18e566",
  "google": "jh_CkhfPADhNaK4dEhhVC2Zx3F8NDAelzEdY-mW5lMI",
  "bing": "",
  "daum": ""
