@@ -114,7 +114,15 @@ jobs:
 
       - name: 앱 아이콘 적용
         run: |
-          sudo apt-get install -y imagemagick >/dev/null 2>&1 || true
+          # 2026-09: 러너 이미지에서 ImageMagick이 빠졌다(convert: command not found). 없으면 목록을 갱신하고 설치한다.
+          # 실패를 숨기지 않는다 — 조용히 넘어가면 아이콘 없이 굽거나 엉뚱한 곳에서 죽는다.
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq imagemagick
+          fi
+          IM=$(command -v magick || command -v convert)
+          echo "이미지 도구: $IM"
+          convert(){ "$IM" "$@"; }
           rm -rf android/app/src/main/res/mipmap-anydpi-v26
           for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
             dpi="${d%%:*}"; size="${d##*:}"
