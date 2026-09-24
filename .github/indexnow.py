@@ -98,7 +98,8 @@ def main():
     else:
         urls = sorted({url_of(p) for p in changed
                        if p.endswith('.html') and not p.startswith('www/') and p != '404.html'
-                       and (path_of(p) in listed or not os.path.exists(p))})   # 사이트맵의 페이지 + 지워진 페이지
+                       and (path_of(p) in listed or p.startswith(('play/', 'moon/')) or not os.path.exists(p))})
+        # 사이트맵의 페이지 + 새로 생긴 놀이·달빛 페이지(폴더별로 나눠 올리면 sitemap.xml이 한 발 늦게 올라온다 — 09-24 v28 때 새 구간 페이지 6쪽이 빠졌음) + 지워진 페이지
         why = '이번에 바뀐 페이지'
     if not urls:
         out('알릴 페이지가 없어요 (검색에 나가는 페이지는 바뀌지 않았어요).')
