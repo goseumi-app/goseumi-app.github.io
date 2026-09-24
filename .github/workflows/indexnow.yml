@@ -1,0 +1,38 @@
+name: 검색엔진에 알리기 (IndexNow)
+
+# 홈페이지 페이지가 바뀌어 올라가면, 바뀐 주소를 네이버·빙 등 IndexNow 참여 검색엔진에 알린다.
+# 구글은 IndexNow를 받지 않는다 — 서치 콘솔에 제출한 사이트맵으로 알아서 온다.
+# 알림이 안 돼도 홈페이지에는 영향이 없어서, 이 작업은 실패(빨간 X)로 끝나지 않고 경고만 남긴다.
+# 손으로 돌리면(Run workflow) 사이트맵의 모든 주소를 다시 알린다.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '*.html'
+      - 'play/**'
+      - 'moon/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 새 버전이 올라올 때까지 기다렸다가 알리기 (결과는 이 실행 페이지 요약 표에)
+        env:
+          BEFORE: ${{ github.event.before }}
+          ALL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python3 .github/indexnow.py
