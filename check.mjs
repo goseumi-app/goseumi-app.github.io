@@ -36,7 +36,8 @@ if (PLAYS) {
   const noSrc = PLAYS.filter(p=>(!p.src||!p.src.length)&&!p.ref).map(p=>p.n);   /* 기록(src) 또는 연구 출처(ref) 중 하나는 반드시 */
   const refBad = PLAYS.filter(p=>p.ref&&!/CDC|WHO|소아과학회|질병관리청/.test(p.ref)).map(p=>p.n);
   const noHow = PLAYS.filter(p=>!p.how||!p.name||!p.mat).map(p=>p.n);
-  const maxM = Math.max(...PLAYS.map(p=>p.m));
+  const endOf = p => p.to==null ? p.m : p.to;          /* 9개월부터는 구간 놀이(m~to) */
+  const maxM = Math.max(...PLAYS.map(endOf));
   dupN.length   ? bad('놀이 번호 중복', dupN.join(',')) : ok('놀이 '+PLAYS.length+'개 · 번호 중복 없음');
   dupName.length? bad('놀이 이름 중복', dupName.join(',')) : ok('놀이 이름 중복 없음');
   noSrc.length  ? bad('출처 없는 놀이', noSrc.join(',')) : ok('모든 놀이에 출처 있음 (기록 '+PLAYS.filter(p=>p.src&&p.src.length).length+' · 연구 기반 '+PLAYS.filter(p=>p.ref).length+')');
@@ -46,6 +47,17 @@ if (PLAYS) {
   const hard = js.match(/for\(let m=0;m<=(\d+);m\+\+\)/g);
   hard ? bad('놀이 목록 루프에 월령이 상수로 박힘', hard.join(' ')+' — 최대 월령은 '+maxM)
        : ok('놀이 목록 루프가 데이터에서 월령을 가져옴 (최대 '+maxM+'개월)');
+  /* 0~최대 월령의 모든 달에 네 영역 놀이가 있어야 «영역별 하나씩» 추천이 빈칸 없이 나온다 */
+  const holes = [];
+  for (let mm=0; mm<=maxM; mm++) {
+    const ds = new Set(PLAYS.filter(p=>p.m<=mm&&mm<=endOf(p)).map(p=>p.dom));
+    const miss = ['인지','신체','사회정서','언어'].filter(d=>!ds.has(d));
+    if (miss.length) holes.push(mm+'개월('+miss.join('·')+')');
+  }
+  const overlap = PLAYS.filter(p=>p.to!=null&&PLAYS.some(q=>q!==p&&q.to!=null&&q.m!==p.m&&q.m<=p.to&&p.m<=q.to)).map(p=>p.n);
+  holes.length ? bad('놀이가 비는 달·영역', holes.slice(0,6).join(', '))
+    : overlap.length ? bad('월령 구간이 겹침', overlap.slice(0,8).join(','))
+    : ok('0~'+maxM+'개월 모든 달에 네 영역 놀이가 있음 (구간 겹침 없음)');
 }
 
 { /* 관찰 원문이 소스에 다시 들어오지 않는지 — 사생활 회귀 방지 */
@@ -59,6 +71,29 @@ if (PLAYS) {
 if (PARTNER) {
   const badUrl = Object.entries(PARTNER).filter(([k,v])=>!/^https:\/\/link\.coupang\.com\//.test(v));
   badUrl.length ? bad('파트너스 링크 형식 이상', badUrl.map(([k])=>k).join(',')) : ok('파트너스 링크 '+Object.keys(PARTNER).length+'개 형식 정상');
+}
+
+/* 준비물 «찾아보기» 버튼 — 앱의 SHOP-KEYWORD 규칙을 그대로 돌려 본다 (홈페이지 도구도 같은 구간을 쓴다).
+   · 별칭은 이미 있는 파트너스 링크(또는 곧 만들 링크)의 깔끔한 이름을 가리킬 것  · 살 물건이 아닌 준비물(계단·반려동물…)에는 버튼이 없을 것
+   · «A 또는 B»처럼 다듬지 않은 말이 버튼 이름이 되지 않을 것 */
+if (PLAYS && PARTNER) {
+  const m = js.match(/\/\* SHOP-KEYWORD-BEGIN[^*]*\*\/([\s\S]*?)\/\* SHOP-KEYWORD-END \*\//);
+  if (!m) bad('준비물 버튼 규칙(SHOP-KEYWORD) 없음');
+  else {
+    let f; try { f = new Function(m[1]+'\nreturn {matKeyword, SHOP_ALIAS, SHOP_NONE};')(); } catch(e){ bad('준비물 버튼 규칙 실행 오류', e.message); }
+    if (f) {
+      const NOT_GOODS = /반려동물|계단|아빠 다리|열린 문|창가|유아차|^없음|^집에|부모|목소리| 또는 |이나 /;
+      const deadAlias = Object.entries(f.SHOP_ALIAS).filter(([a,t])=>f.SHOP_NONE.includes(t) || NOT_GOODS.test(t));
+      let np=0, ns=0, nn=0; const silly=[], search=new Set();
+      for (const p of PLAYS) { const k = f.matKeyword(p.mat);
+        if (!k) { nn++; continue; }
+        if (PARTNER[k]) np++; else { ns++; search.add(k); }
+        if (!PARTNER[k] && NOT_GOODS.test(k)) silly.push('#'+p.n+' «'+k+'»'); }
+      if (deadAlias.length) bad('준비물 버튼 별칭이 이상한 곳을 가리킴', deadAlias.map(([a,t])=>a+'→'+t).join(', '));
+      else if (silly.length) bad('살 물건이 아닌 준비물에 쇼핑 버튼', silly.join(', '));
+      else ok('준비물 버튼 — 파트너스 '+np+' · 쿠팡 검색 '+ns+' · 없음 '+nn+' (살 물건 아닌 준비물엔 버튼 없음)', search.size? '검색만: '+[...search].join(', ') : '');
+    }
+  }
 }
 
 /* 절대 금지선 — 「앱 방향」 메모에 적힌 것. 코드에 다시 기어들어오는 걸 막는다.
@@ -244,8 +279,10 @@ async function fresh(opts={}) {
   const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
   const page = await ctx.newPage();
   await page.goto(BASE);
-  await page.evaluate(()=>localStorage.setItem('siwoo.child',
-    JSON.stringify({birth:'2024-01-15',due:null,domain:'인지',reason:'play',name:'아이'})));
+  /* 놀이가 있는 최대 월령보다 반년 큰 아이 — 놀이가 늘어나도 검사가 저절로 따라간다 */
+  const bigBirth = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-(Math.max(...PLAYS.map(p=>p.to==null?p.m:p.to))+6)); return d.toISOString().slice(0,10); })();
+  await page.evaluate(b=>localStorage.setItem('siwoo.child',
+    JSON.stringify({birth:b,due:null,domain:'인지',reason:'play',name:'아이'})), bigBirth);
   await page.reload(); await page.waitForTimeout(500);
   const r = await page.evaluate(()=>{ go('plays');
     const t=document.querySelector('main').innerText;
@@ -255,6 +292,25 @@ async function fresh(opts={}) {
   (r.m>r.max && !r.거짓제목 && r.안내있음 && r.카드>0)
     ? ok('놀이보다 큰 아이('+r.m+'개월)에게 «지금 월령 놀이»라고 하지 않고 한계를 밝힘')
     : bad('큰 아이에게 월령을 속임', JSON.stringify(r));
+  await ctx.close();
+}
+
+/* 2-5c. 월령에 맞는 추천 — 20개월 아이에게 7~8개월 놀이를 내밀지 않는다 (v27까지 실제로 그랬다) */
+{
+  const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
+  const page = await ctx.newPage();
+  await page.goto(BASE);
+  const b20 = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-20); d.setDate(d.getDate()-3); return d.toISOString().slice(0,10); })();
+  await page.evaluate(b=>{ localStorage.clear(); localStorage.setItem('siwoo.child',
+    JSON.stringify({birth:b,due:null,domain:'none',reason:'play',name:'아이'})); }, b20);
+  await page.reload(); await page.waitForTimeout(500);
+  const r = await page.evaluate(()=>{ const s=suggestToday().map(n=>PLAYS.find(p=>p.n===n));
+    go('plays'); const t=document.querySelector('main').innerText;
+    return {age:monthAge(), ms:s.map(p=>p.m+'~'+(p.to==null?p.m:p.to)), doms:[...new Set(s.map(p=>p.dom))].length,
+      fit:s.every(p=>(p.to==null?p.m:p.to)>=monthAge()-8 && p.m<=monthAge()), title:t.includes('지금 월령('+monthAge()+'개월) 놀이')}; });
+  (r.age===20 && r.fit && r.doms===4 && r.title)
+    ? ok('월령에 맞는 추천 — 20개월 아이에게 '+r.ms.join('·')+'개월 놀이 (네 영역)')
+    : bad('추천이 월령에 안 맞음', JSON.stringify(r));
   await ctx.close();
 }
 
