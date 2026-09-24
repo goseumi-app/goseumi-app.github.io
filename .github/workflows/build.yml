@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    # 홈페이지(랜딩·안내 페이지)만 바뀐 푸시에는 APK를 다시 굽지 않는다 — 앱 파일이 바뀔 때만
+    paths:
+      - 'www/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'debug-key.b64'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: read
