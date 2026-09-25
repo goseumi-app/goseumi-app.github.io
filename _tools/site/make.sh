@@ -18,6 +18,7 @@ python3 -c "import fontTools, brotli, PIL" 2>/dev/null || pip install -q --break
 rm -rf "$OUT"; mkdir -p "$OUT" "$WORK"
 node "$TOOLS/src/build.mjs" "$APP_DIR/index.html" "$OUT"
 python3 "$TOOLS/src/subset_font.py" "$OUT"
+node "$TOOLS/src/stamp.mjs"
 if [ "${1:-}" = "--shots" ]; then
   node "$TOOLS/src/shots.mjs"
   python3 "$TOOLS/src/shots_webp.py"
