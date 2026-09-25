@@ -1,5 +1,5 @@
 # 만든 사이트(OUT)와 저장소(REPO)를 비교해, 올려야 할 파일을 폴더별로 묶어 보여 준다(웹 업로드는 폴더 단위).
-import hashlib, os
+import hashlib, os, re
 OUT = os.environ.get('OUT', '/tmp/goseumi-site-out')
 REPO = os.environ.get('REPO') or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
 SKIP = {'og-jobs.json'}
@@ -21,7 +21,14 @@ for dp, dn, fn in os.walk(OUT):
         if os.path.exists(b) and md5(a) == md5(b):
             same += 1
             continue
-        groups.setdefault(os.path.dirname(rel) or '(루트)', []).append((rel, '바뀜' if os.path.exists(b) else '새 파일'))
+        how = '새 파일'
+        if os.path.exists(b):
+            how = '바뀜'
+            if rel.endswith(('.html', '.xml')):
+                norm = lambda q: re.sub(rb'\?v=[0-9a-z]+', b'', open(q, 'rb').read())
+                if norm(a) == norm(b):
+                    how = '바뀜 (캐시 표시 ?v= 만)'
+        groups.setdefault(os.path.dirname(rel) or '(루트)', []).append((rel, how))
 
 gone = []   # 저장소에는 있는데 이번 빌드에는 없는 페이지·공유 그림
 for d, ext in (('play', '.html'), ('moon', '.html'), ('assets/og', '.jpg')):

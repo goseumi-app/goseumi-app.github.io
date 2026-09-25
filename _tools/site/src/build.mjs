@@ -4,7 +4,11 @@
 import fs from 'fs'; import path from 'path';
 import { SRC, APP_DIR, OUT as OUT_DEFAULT } from './paths.mjs';
 const APP=process.argv[2]||path.join(APP_DIR,'index.html'), OUT=process.argv[3]||OUT_DEFAULT;
-const BASE='https://goseumi-app.github.io', BUILT=new Date().toISOString().slice(0,10), VER=BUILT.replace(/-/g,'');
+const BASE='https://goseumi-app.github.io', BUILT=new Date().toISOString().slice(0,10);
+/* 캐시 깨기용 ?v= 값은 파일마다 «그 파일 내용의 해시»다 — 글꼴·스크립트가 안 바뀌면 페이지 바이트도 그대로여서
+   달빛 17쪽처럼 내용이 그대로인 페이지를 다시 올릴 일이 없다(날짜를 쓰면 매 빌드 전 페이지가 바뀐 것처럼 보였다).
+   여기서는 자리표시자만 넣고, 글꼴 부분집합이 만들어진 뒤 stamp.mjs가 실제 값으로 바꾼다. */
+const V={font:'__V_FONT__',sitejs:'__V_SITEJS__',demojs:'__V_DEMOJS__',plays:'__V_PLAYS__'};
 /* 검색엔진 «내 사이트 맞아요» 확인 값 — src/verify.json에 적어 두면 다시 빌드해도 안 사라진다(환경변수가 있으면 그게 우선).
    메타 태그를 통째로 붙여 넣어도 content 값만 골라 쓴다. 다음(Daum)은 robots.txt 한 줄(#DaumWebMasterTool:…)이다. */
 const VF=fs.existsSync(path.join(SRC,'verify.json'))?JSON.parse(fs.readFileSync(path.join(SRC,'verify.json'),'utf8')):{};
@@ -101,8 +105,8 @@ ${url===BASE+'/'?verifyMeta():''}<meta name="theme-color" content="#FBF3E7" medi
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/www/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="/www/apple-touch-icon.png">
-<link rel="preload" href="/fonts/pretendard-site.woff2?v=${VER}" as="font" type="font/woff2" crossorigin>
-<style>@font-face{font-family:"Pretendard Variable";font-weight:45 920;font-style:normal;font-display:optional;src:url(/fonts/pretendard-site.woff2?v=${VER}) format("woff2-variations"),url(/fonts/pretendard-site.woff2?v=${VER}) format("woff2")}${CSS}</style>
+<link rel="preload" href="/fonts/pretendard-site.woff2?v=${V.font}" as="font" type="font/woff2" crossorigin>
+<style>@font-face{font-family:"Pretendard Variable";font-weight:45 920;font-style:normal;font-display:optional;src:url(/fonts/pretendard-site.woff2?v=${V.font}) format("woff2-variations"),url(/fonts/pretendard-site.woff2?v=${V.font}) format("woff2")}${CSS}</style>
 ${ld.map(o=>`<script type="application/ld+json">${JSON.stringify(o)}</script>`).join('\n')}
 ${extra}</head>`;
 }
@@ -121,7 +125,7 @@ function foot(){
 </div>
 <p class="fine">고슴이는 의료 조언이 아니에요. 아이 건강에 관한 판단과 진료는 소아청소년과 의사 선생님과 하세요. 놀이의 시기 표시는 미국 CDC 발달 이정표와 WHO 연구를 옮긴 것이며, CDC·HHS의 보증을 받지 않았어요.</p>
 </div></footer>
-<script src="/assets/site.js?v=${VER}" defer></script>`;
+<script src="/assets/site.js?v=${V.sitejs}" defer></script>`;
 }
 const crumbs=items=>`<nav class="crumbs wrap" aria-label="현재 위치"><ol>${items.map(([n,u])=>u?`<li><a href="${u}">${esc(n)}</a></li>`:`<li aria-current="page">${esc(n)}</li>`).join('')}</ol></nav>`;
 const ldCrumbs=items=>({"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":items.map(([n,u],i)=>({"@type":"ListItem","position":i+1,"name":n,"item":BASE+(u||'')}))});
@@ -325,7 +329,7 @@ ${top()}
 <div class="sec-head reveal"><span class="eyebrow">${ico('baby')}미리 보기</span><h2 class="h-sec" id="demo-h">생일만 넣어 보세요</h2>
 <p class="lead">오늘 해볼 놀이 네 가지가 바로 나와요. 넣은 날짜는 이 폰 밖으로 나가지 않아요.</p></div>
 <div class="demo">
-<form class="demo-form card reveal" id="demo-form" data-src="/assets/plays.json?v=${VER}" data-app="/www/index.html" data-month="/play/">
+<form class="demo-form card reveal" id="demo-form" data-src="/assets/plays.json?v=${V.plays}" data-app="/www/index.html" data-month="/play/">
 <label for="demo-birth">아기 생년월일</label>
 <input type="date" id="demo-birth" name="birth" required min="2018-01-01">
 <button class="btn btn-pri btn-lg" type="submit">오늘 놀이 보기</button>
@@ -395,7 +399,7 @@ ${top()}
 </main>
 <div class="sticky-cta" id="sticky-cta"><a class="btn btn-pri btn-lg" href="/www/index.html">무료로 시작하기 ${ico('arrow-right')}</a></div>
 ${foot()}
-<script src="/assets/demo.js?v=${VER}" defer></script>
+<script src="/assets/demo.js?v=${V.demojs}" defer></script>
 </body></html>`;
   write('index.html',body); pages.unshift({url,rel:'index.html',prio:'1.0'});
   ogJobs.unshift({name:'home',kind:'home'});
