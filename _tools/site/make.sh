@@ -1,5 +1,5 @@
 #!/bin/bash
-# 고슴이 홈페이지 전체 빌드: 페이지 → 글꼴(쓰인 글자만) → 공유 미리보기 그림 → 올릴 파일 목록
+# 고슴이 홈페이지 전체 빌드: 페이지 → 글꼴(쓰인 글자만) → 캐시 표시(?v= 내용 해시) → 공유 미리보기 그림 → 올릴 파일 목록
 #   bash _tools/site/make.sh           앱(www/index.html) 데이터로 다시 만든다
 #   bash _tools/site/make.sh --shots   앱 화면이 바뀌었을 때: 랜딩의 폰 화면 사진까지 다시 찍는다
 # 결과는 $OUT(기본 /tmp/goseumi-site-out)에만 생긴다 — 저장소는 건드리지 않는다. 올리는 법은 README.md

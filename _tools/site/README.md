@@ -30,7 +30,7 @@ node src/review.mjs /,/play/8.html         # 눈검증 사진 (모바일·PC × 
 - 결과는 `/tmp/goseumi-site-out`에만 생기고 저장소는 건드리지 않는다. 끝에 **올릴 파일 목록이 폴더별로** 나온다.
 - 처음 한 번 `npm install`(playwright·pretendard)과 `pip install fonttools brotli pillow`를 알아서 한다.
 - 성능 점수: `npm i --no-save lighthouse@12 chrome-launcher && node src/lh.mjs /,/play/8.html`
-- 빌드 날짜(UTC)가 `?v=`와 sitemap `lastmod`에 들어간다. 그래서 다른 날 다시 만들면 모든 페이지가 «바뀜»으로 나온다(정상).
+- 캐시 깨기용 `?v=`는 파일마다 **그 파일 내용의 해시**(8자)다. 글꼴·스크립트·plays.json이 안 바뀌면 페이지 바이트도 그대로여서, 내용이 그대로인 페이지는 sitemap `lastmod`도 저장소 값을 유지한다(`src/stamp.mjs`). 그래서 다른 날 다시 만들어도 바뀐 페이지만 «바뀜»으로 나온다 — `?v=`만 다른 것은 «바뀜 (캐시 표시 ?v= 만)»으로 따로 표시된다.
 
 ## 올리는 법 (웹 업로드)
 
@@ -52,7 +52,7 @@ node src/review.mjs /,/play/8.html         # 눈검증 사진 (모바일·PC × 
 
 | 파일 | 하는 일 |
 |---|---|
-| `make.sh` | 전체 빌드 (페이지 → 글꼴 → 공유 그림 → 올릴 목록) |
+| `make.sh` | 전체 빌드 (페이지 → 글꼴 → 캐시 표시 → 공유 그림 → 올릴 목록) |
 | `src/build.mjs` | 모든 페이지·sitemap·robots·plays.json·IndexNow 열쇠 파일 |
 | `src/site.css` · `site.js` · `demo.js` | 디자인(페이지 안에 인라인) · 카톡 안내 띠·설치 탭 · «생일 넣고 미리 보기» |
 | `src/icons.json` · `qr.svg` · `wordmark.svg` | 아이콘 · 설치 QR · 글자 로고 |
@@ -61,6 +61,7 @@ node src/review.mjs /,/play/8.html         # 눈검증 사진 (모바일·PC × 
 | `src/indexnow.key` | IndexNow 열쇠(공개돼도 되는 값) → 루트 `<열쇠>.txt` |
 | `src/og.mjs` | 페이지마다 공유 미리보기 그림 1200×630 (원본 Pretendard로) |
 | `src/subset_font.py` | 사이트에 쓰인 글자만 담은 글꼴 한 파일 |
+| `src/stamp.mjs` | 글꼴 부분집합 뒤에 `?v=` 자리표시자를 내용 해시로 채우고, 내용이 그대로인 페이지의 sitemap `lastmod`를 저장소 값으로 되돌린다 |
 | `src/shots.mjs` · `shots_webp.py` | 데모 프로필 «봄이»로 앱 화면 캡처 → WebP 3크기 (실제 아이 기록 아님) |
 | `src/serve.mjs` · `paths.mjs` | GitHub Pages와 같은 배치의 로컬 서버 · 경로 설정(환경변수로 바꿀 수 있음) |
 | `src/sitetest.mjs` · `review.mjs` · `lh.mjs` · `changed.py` | 기능 검사 · 눈검증 사진 · 성능 · 올릴 파일 목록 |
