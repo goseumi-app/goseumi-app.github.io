@@ -292,6 +292,11 @@ article.play .warn{margin:14px 0 0;font-size:15px;background:var(--bg2);border-r
 @media (prefers-color-scheme:dark){.matheye .k{color:#CDB8F2}}
 .matheye p{margin:6px 0 0;font-size:15px;line-height:1.7}
 .buy{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:700;margin-left:6px;white-space:nowrap}
+/* 놀이 카드의 «장난감 예시» (파트너스 링크 목록) */
+article.play .toys{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:10px}
+article.play .toys .buy{margin-left:0;white-space:normal}
+article.play .toys .td{display:block;font-size:15px;line-height:1.6;color:var(--ink2);margin-top:2px}
+article.play .toy-note{display:block;margin-top:8px;font-size:13.5px;line-height:1.6;color:var(--sub)}
 .ad-note{font-size:13.5px;color:var(--sub);background:var(--bg2);border-radius:10px;padding:8px 12px;margin:12px 0 0}
 .pn{display:flex;justify-content:space-between;gap:12px;margin:34px 0 0;flex-wrap:wrap}
 .pn a{flex:1 1 200px;background:var(--card);border-radius:var(--r-md);padding:16px 18px;text-decoration:none;color:var(--ink);box-shadow:var(--shadow);font-weight:750}

@@ -70,5 +70,26 @@ for(const [ua,exp] of [[UA.safariI,'아이폰'],[UA.chromeA,'안드로이드']])
 // 8) FAQ·탭 키보드
 { const {ctx,p}=await pg(UA.chromeA); await p.goto(B+'/'); await p.focus('#t-and'); await p.keyboard.press('ArrowRight'); await p.waitForTimeout(100);
   const t=await p.evaluate(()=>document.activeElement.id+'/'+document.querySelector('[role=tab][aria-selected=true]').id); t==='t-inapp/t-inapp'?ok('설치 탭 — 화살표 키로 이동'):bad('탭 키보드',t); await ctx.close(); }
+// 9) 놀이 쪽 «장난감 예시» — 파트너스 링크·공정위 문구·연령/KC 안내 · 장난감이 있는 쪽엔 광고 안내 · 좁은 폭 넘침·글자 대비
+{ const {ctx,p}=await pg(UA.chromeA,{width:360,height:800}); await p.goto(B+'/play/9.html'); await p.waitForTimeout(300);
+  const r=await p.evaluate(()=>{ const a=document.querySelector('#p93'); const l=[...a.querySelectorAll('.toys a.buy')];
+    return {href:l.map(x=>x.getAttribute('href')), rel:l.map(x=>x.rel), note:(a.querySelector('.toy-note')||{}).textContent||'', ad:(document.querySelector('.ad-note')||{}).textContent||'', over:document.documentElement.scrollWidth-innerWidth, order:[...a.querySelectorAll('dt')].map(d=>d.textContent).join('>')}; });
+  (r.href.length===1&&r.href[0]==='https://link.coupang.com/a/huO1YjzgiW'&&/sponsored/.test(r.rel[0])&&r.note.includes('사용 연령')&&r.note.includes('KC 인증')&&r.ad.includes('쿠팡 파트너스 활동의 일환')&&r.over<=0&&r.order==='준비물>장난감 예시>이렇게 해요>어려워하면>한 단계 더')
+    ?ok('/play/9.html #93 — 장난감 예시 1개(파트너스 링크·sponsored)·연령/KC 안내·위쪽 공정위 문구·360px 넘침 없음'):bad('#93 장난감 예시',JSON.stringify(r)); await ctx.close(); }
+{ const {ctx,p}=await pg(UA.chromeA); const want={6:2,7:2,8:1,9:1,12:1,15:1,24:1,30:2}; const got={}; const noAd=[];
+  for(const m of [0,1,2,3,4,5,6,7,8,9,12,15,18,24,30]){ await p.goto(B+'/play/'+m+'.html'); const x=await p.evaluate(()=>({t:document.querySelectorAll('.toys').length, ad:!!document.querySelector('.ad-note')})); if(x.t) got[m]=x.t; if(x.t&&!x.ad) noAd.push(m); }
+  const diff=Object.keys({...want,...got}).filter(k=>want[k]!==got[k]);
+  (!diff.length&&!noAd.length)?ok('장난감 예시가 있는 쪽 8곳(11놀이)에 모두 광고 안내 문구',JSON.stringify(got)):bad('장난감 예시 쪽 분포',JSON.stringify({diff,noAd,got})); await ctx.close(); }
+{ const {ctx,p}=await pg(UA.chromeA); await p.goto(B+'/play/15.html');
+  const n=await p.evaluate(()=>[...document.querySelectorAll('#p117 .toys a.buy')].map(a=>a.textContent.trim()));
+  (n.length===2&&n[0].includes('모양 끼우기 큐브')&&n[1].includes('여섯 면 놀이 큐브'))?ok('/play/15.html #117 — 장난감 2개',n.join(' | ')):bad('#117 장난감',JSON.stringify(n)); await ctx.close(); }
+for(const scheme of ['light','dark']){ const ctx=await b.newContext({viewport:{width:390,height:844},colorScheme:scheme}); const p=await ctx.newPage(); await p.goto(B+'/play/15.html');
+  const low=await p.evaluate(()=>{ const parse=c=>{const m=c.match(/rgba?\(([^)]+)\)/); if(!m) return [255,255,255,1]; const v=m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return [v[0],v[1],v[2],v[3]??1]};
+    const over=(f,b)=>[f[0]*f[3]+b[0]*(1-f[3]),f[1]*f[3]+b[1]*(1-f[3]),f[2]*f[3]+b[2]*(1-f[3]),1];
+    const lum=a=>{const m=a.slice(0,3).map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)});return .2126*m[0]+.7152*m[1]+.0722*m[2]};
+    const bgOf=el=>{const ch=[];let e=el;while(e){ch.push(e);e=e.parentElement} let bg=[255,255,255,1]; for(const x of ch.reverse()){const c=parse(getComputedStyle(x).backgroundColor); if(c[3]>0) bg=over(c,bg);} return bg};
+    const out=[]; document.querySelectorAll('#p117 .toys, #p117 .toys *, #p117 .toy-note').forEach(el=>{ const t=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent.trim()).join('').trim(); if(t.length<2) return;
+      const s=getComputedStyle(el); const bg=bgOf(el); let fg=parse(s.color); if(fg[3]<1) fg=over(fg,bg); const c=(Math.max(lum(fg),lum(bg))+.05)/(Math.min(lum(fg),lum(bg))+.05); if(c<4.5) out.push(t.slice(0,12)+'('+c.toFixed(2)+')'); }); return out; });
+  low.length?bad('장난감 예시 글자 대비('+scheme+')',low.join(' ')):ok('장난감 예시 글자 대비 4.5:1 이상 — '+(scheme==='dark'?'어둠':'낮')+' 모드'); await ctx.close(); }
 console.log(R.join('\n')); console.log(R.some(x=>x.includes('❌'))?'FAIL':'PASS');
 await b.close(); srv.close();

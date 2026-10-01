@@ -18,6 +18,9 @@ const pickV=(k,v)=>{ v=String(v||'').trim(); const m=v.match(/content=["']([^"']
 const VERIFY=Object.fromEntries(['naver','google','bing','daum'].map(k=>[k,pickV(k,process.env[k.toUpperCase()+'_VERIFY']||VF[k])]));
 /* IndexNow 열쇠 — 빙·네이버 등에 «이 주소 바뀌었어요» 알릴 때 쓴다. 공개돼도 되는 값(사이트 맨 위 <열쇠>.txt 로 올라감) */
 const INDEXNOW_KEY=fs.readFileSync(path.join(SRC,'indexnow.key'),'utf8').trim();
+/* 테스터·소식 신청서(구글 폼) — 이메일과 동의만 받는다. 앱 기록은 여전히 폰 안에만. */
+const FORM_URL='https://docs.google.com/forms/d/e/1FAIpQLScPD8GmYf7ExLq5OBNhAdhyfnNM-gqnJpGrucInWXRYDRVwyw/viewform';
+const CHAT_URL='https://open.kakao.com/o/gXlOOhLi';
 if(!/^[0-9a-f]{32}$/.test(INDEXNOW_KEY)) throw new Error('src/indexnow.key는 16진수 32자여야 해요');
 
 /* ── 앱에서 데이터 꺼내기 (check.mjs와 같은 방식) ── */
@@ -75,6 +78,11 @@ const matKeyword=SHOP_SRC? new Function(SHOP_SRC+'\nreturn matKeyword;')()
   : function(mat){ const m=(mat||'').split(/[,(·]/)[0].trim(); if(!m||m==='없음'||m.startsWith('아무')||m.startsWith('부모')) return null; return m.replace(/^아기\s*/,'아기 '); };
 const buyLink=mat=>{ const k=matKeyword(mat); return k&&PARTNER[k]?{k,url:PARTNER[k]}:null; };
 const AD_NOTE='이 게시물은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.';
+/* 놀이별 «장난감 예시» — 앱의 TOY-REC 구간을 그대로 읽는다 (앱 카드의 «🧸 이 놀이에 쓸 수 있는 장난감»과 같은 내용).
+   옛 판 앱에는 그 구간이 없으니 그때는 장난감 칸 없이 */
+const TOY_SRC=(js.match(/\/\* TOY-REC-BEGIN[^*]*\*\/([\s\S]*?)\/\* TOY-REC-END \*\//)||[])[1];
+const {TOYS,TOY_PLAYS}=TOY_SRC? new Function(TOY_SRC+'\nreturn {TOYS,TOY_PLAYS};')() : {TOYS:{},TOY_PLAYS:{}};
+const toysOf=p=>(TOY_PLAYS[p.n]||[]).map(([k,line])=>TOYS[k]?{...TOYS[k],line}:null).filter(Boolean);
 const cdcLabel=l=>l?esc(l).replace(/^\[CDC (\d+)개월\]/,'CDC $1개월 이정표 —').replace(/^\[WHO ([^\]]+)\]/,'WHO $1 —'):'';
 
 /* ── 공용 머리·머리띠·발 ── */
@@ -121,7 +129,7 @@ function foot(){
   return `<footer class="site"><div class="wrap"><div class="cols">
 <div>${brand}<p class="fine" style="margin-top:12px">하루 5분, 오늘 아기와 뭐 하고 놀지 골라주는 무료 기록장이에요. 서버가 없어서 기록은 폰 안에만 남아요.</p></div>
 <div><h2 class="fh">둘러보기</h2><ul><li><a href="/www/index.html">앱 열기</a></li><li><a href="/play/">개월수별 아기 놀이</a></li><li><a href="/moon/">지역별 달빛어린이병원</a></li><li><a href="/#install">홈 화면에 추가하기</a></li></ul></div>
-<div><h2 class="fh">함께하기</h2><ul><li><a href="https://open.kakao.com/o/gXlOOhLi" target="_blank" rel="noopener">사용자 방 (카카오 오픈채팅)</a></li><li><a href="https://www.threads.net/@goseumi.app" target="_blank" rel="noopener">쓰레드 @goseumi.app</a></li><li><a href="/privacy.html">개인정보 처리방침</a></li></ul></div>
+<div><h2 class="fh">함께하기</h2><ul><li><a href="${FORM_URL}" target="_blank" rel="noopener">테스터·소식 신청</a></li><li><a href="${CHAT_URL}" target="_blank" rel="noopener">사용자 방 (카카오 오픈채팅)</a></li><li><a href="https://www.threads.net/@goseumi.app" target="_blank" rel="noopener">쓰레드 @goseumi.app</a></li><li><a href="/privacy.html">개인정보 처리방침</a></li></ul></div>
 </div>
 <p class="fine">고슴이는 의료 조언이 아니에요. 아이 건강에 관한 판단과 진료는 소아청소년과 의사 선생님과 하세요. 놀이의 시기 표시는 미국 CDC 발달 이정표와 WHO 연구를 옮긴 것이며, CDC·HHS의 보증을 받지 않았어요.</p>
 </div></footer>
@@ -138,13 +146,14 @@ const shot=(n,alt,cls='',pri=false)=>`<div class="phone ${cls}"><picture><source
 const byM={}; PLAYS.forEach(p=>{(byM[p.m]=byM[p.m]||[]).push(p)});
 const months=Object.keys(byM).map(Number).sort((a,b)=>a-b);
 function playArticle(p){
-  const buy=buyLink(p.mat), w=webWarn(p), me=p.mathEye;
+  const buy=buyLink(p.mat), w=webWarn(p), me=p.mathEye, toys=toysOf(p);
   return `<article class="play" id="p${p.n}">
 <div class="meta-line" style="margin:0"><span class="tag t-${p.dom}">${DOM_LABEL[p.dom]}</span>${p.dom2?`<span class="tag t-${p.dom2}">${DOM_LABEL[p.dom2]}</span>`:''}<span class="tag t-src">${p.ref?'연구 기반':'실제 기록에서'}</span></div>
 <h3>${esc(p.name)}</h3>
 ${p.label?`<p class="cdc">${cdcLabel(p.label)}</p>`:''}
 <dl>
 <div><dt>준비물</dt><dd>${esc(p.mat)}${buy?` <a class="buy" href="${buy.url}" target="_blank" rel="sponsored noopener">${ico('external-link')}쿠팡에서 보기<span class="sr-only"> (광고 링크)</span></a>`:''}</dd></div>
+${toys.length?`<div><dt>장난감 예시</dt><dd><span class="small">(선택 — 집에 있는 것으로도 충분해요)</span><ul class="toys">${toys.map(t=>`<li><a class="buy" href="${esc(t.u)}" target="_blank" rel="sponsored noopener">${ico('external-link')}${esc(t.n)} 쿠팡에서 보기<span class="sr-only"> (광고 링크)</span></a><span class="td">${esc(t.d)} ${esc(t.line)}</span></li>`).join('')}</ul><span class="toy-note">사기 전에 상품 페이지의 사용 연령과 KC 인증 표시를 확인해 주세요.${toys.some(t=>t.bat)?' 건전지가 들어가는 장난감은 건전지 덮개가 단단히 닫히는지도 봐 주세요.':''}</span></dd></div>`:''}
 <div><dt>이렇게 해요</dt><dd>${rich(p.how)}</dd></div>
 ${p.down?`<div><dt>어려워하면</dt><dd>${rich(p.down)}</dd></div>`:''}
 ${p.up?`<div><dt>한 단계 더</dt><dd>${rich(p.up)}</dd></div>`:''}
@@ -163,7 +172,7 @@ for(const m of months){
   const pRec=L.filter(p=>p.src&&p.src.length).length, pRef=L.filter(p=>p.ref).length;
   const names=L.slice(0,3).map(p=>p.name).join(', ');
   const desc=`${mName(m)} 아기와 집에서 해볼 발달 놀이 ${n}가지 — ${names} 등. 준비물·방법·쉽게/어렵게 하는 법까지 한 번에. 시기는 미국 CDC·WHO 이정표 기준.`;
-  const hasAd=L.some(p=>buyLink(p.mat));
+  const hasAd=L.some(p=>buyLink(p.mat)||toysOf(p).length);
   const doms=DOMS.map(d=>[d,L.filter(p=>p.dom===d)]).filter(([,x])=>x.length);
   const mi=months.indexOf(m), prev=mi>0?months[mi-1]:null, next=mi<months.length-1?months[mi+1]:null;
   const ld=[ldCrumbs([['고슴이','/'],['개월수별 놀이','/play/'],[mName(m),`/play/${m}.html`]]),
@@ -279,6 +288,7 @@ ${foot()}
     ['달빛어린이병원 정보는 실시간인가요?',`아니요. ${MOON_WHEN} 보건복지부 지정 목록이라, 진료 여부는 가기 전에 꼭 전화로 확인해 주세요. 지금 문을 열었는지는 응급의료포털(E-Gen)에서 볼 수 있어요.`],
     ['몇 개월까지 쓸 수 있나요?',`잠·이유식·예방접종·하루 기록은 개월수와 상관없이 쓸 수 있어요. 놀이는 신생아부터 생후 ${MAX_TXT}까지 있어요 — 생후 ${REC_MAX_M}개월까지는 한 아기의 실제 관찰 기록에서, 그 뒤는 미국 CDC 공식 이정표·활동 팁에서 왔어요.`],
     ['카톡에서 열었더니 홈 화면 추가가 안 돼요','카톡·인스타 같은 앱 안의 브라우저는 홈 화면 추가를 막아 둬요. 거기서 적은 기록도 그 앱 안에만 남고요. 화면 위쪽 안내 띠의 «크롬으로 열기»(아이폰은 «사파리로 여는 법»)를 눌러 주세요.'],
+    ['테스터가 뭔가요? 돈이 드나요?','플레이스토어에 정식으로 올리려면 구글 규정상 12명이 14일 동안 테스트판을 써 봐야 해요. 안드로이드 폰에 설치하고 지우지만 않으면 되고, 돈은 전혀 들지 않아요. 신청서에 이메일을 남기면 초대를 보내 드리고, 그 이메일은 초대와 소식 안내에만 써요. 지금 쓰는 웹 버전은 테스트와 상관없이 그대로 쓸 수 있어요.'],
   ];
   const ld=[
     {"@context":"https://schema.org","@type":"WebSite","name":"고슴이","url":url,"inLanguage":"ko-KR"},
@@ -390,7 +400,15 @@ ${top()}
 <aside class="qrbox reveal" aria-label="휴대폰으로 열기">${QR}<b>휴대폰 카메라로 비춰 보세요</b><p class="small" style="margin:6px 0 0">컴퓨터로 보고 계시면, 폰에서 바로 열려요.</p></aside>
 </div></div></section>
 
-<section class="sec" aria-labelledby="faq-h"><div class="narrow">
+<section class="sec" aria-labelledby="join-h"><div class="wrap">
+<div class="sec-head reveal"><span class="eyebrow">${ico('hand-heart')}함께 만들기</span><h2 class="h-sec" id="join-h">고슴이는 이제 막 시작했어요</h2>
+<p class="lead">지금 쓰는 사람은 몇 명 안 돼요. 그래서 한 분의 한마디가 다음 판을 정해요.</p></div>
+<div class="hub-grid">
+<div class="hub reveal"><h3>${ico('smartphone')}플레이스토어 테스터 12명</h3><p>정식 출시 전에 구글이 요구하는 절차예요. 안드로이드 폰에 테스트판을 설치하고 14일 동안 지우지만 않으면 돼요. 이메일만 남기면 초대를 보내 드려요 — 아이폰이면 «소식만»을 골라 주세요.</p><a class="btn btn-pri btn-sm" href="${FORM_URL}" target="_blank" rel="noopener">테스터·소식 신청 (1분)</a></div>
+<div class="hub reveal"><h3>${ico('message-circle')}사용자 방 (카카오 오픈채팅)</h3><p>막히는 곳, 있었으면 하는 기능, 아이랑 해 본 놀이 이야기. 만든 사람이 직접 답해요.</p><a class="btn btn-sec btn-sm" href="${CHAT_URL}" target="_blank" rel="noopener">방 들어가기</a></div>
+</div></div></section>
+
+<section class="sec alt" aria-labelledby="faq-h"><div class="narrow">
 <div class="sec-head center reveal"><h2 class="h-sec" id="faq-h">자주 묻는 것</h2></div>
 <div class="faq">${FAQ.map(([q,a])=>`<details><summary>${esc(q)}</summary><div class="a"><p>${esc(a)}</p></div></details>`).join('')}</div>
 </div></section>
