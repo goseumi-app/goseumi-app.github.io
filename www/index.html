@@ -215,6 +215,11 @@ body.night .mk b.k3,body.night .callg b.k3{background:#C48A66} body.night .mk b.
 .mathbox .tt{font-weight:800;color:#7A5FA8;font-size:13px;margin-bottom:6px}
 @media (prefers-color-scheme: dark){ .mathbox{background:linear-gradient(135deg,#3A2F52,transparent)} .mathbox .tt{color:#C9B4EC} }
 .srcbox{background:var(--bg);border-radius:16px;padding:10px 12px;font-size:12.5px;color:var(--sub);margin-top:12px;font-weight:600}
+/* 놀이 카드의 «이 놀이에 쓸 수 있는 장난감» (선택) */
+.toybox{background:var(--bg);border:2px solid var(--line);border-radius:18px;padding:12px 14px;margin:12px 0;font-size:14px}
+.toybox .tt{font-weight:800;font-size:13.5px;margin-bottom:4px}
+.toybox .toyrow{margin-top:12px}
+.toybox .toyrow .small{margin-top:6px}
 .bubble{position:relative;background:var(--card);border:2px solid var(--line);border-radius:18px;
   padding:12px 14px;font-size:14.5px;box-shadow:var(--clay-s);font-weight:700}
 .bubble::before{content:"";position:absolute;left:-9px;top:18px;width:14px;height:14px;background:var(--card);
@@ -639,7 +644,7 @@ function pstate(n){if(!playState[n])playState[n]={level:0,sad:0,skip:0,happy:0};
 function daysBetween(a,b){return Math.round((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/864e5)}
 
 /* ============ 쇼핑 ============ */
-const PARTNER_DEFAULT={"흑백 초점책": "https://link.coupang.com/a/gwVRTqiPqC", "초점책": "https://link.coupang.com/a/gwXaSUS9RI", "모빌": "https://link.coupang.com/a/gwWb7eW7sy", "아기 체육관": "https://link.coupang.com/a/gwWdzoZk5I", "보드북": "https://link.coupang.com/a/gwXcVmtoZM", "치발기": "https://link.coupang.com/a/gwXdDR5Dy0", "매트": "https://link.coupang.com/a/gwXeggLnt6", "원목 블록": "https://link.coupang.com/a/gwXeWsbnYy", "마스킹 테이프": "https://link.coupang.com/a/gwXfq5Mdye", "공": "https://link.coupang.com/a/gwXh0LuVW0", "크기가 다른 공 여러 개": "https://link.coupang.com/a/gwXlAgimSi", "촉감책": "https://link.coupang.com/a/gwXmpqd8kC", "팝업북": "https://link.coupang.com/a/gwXndjm2JE", "안전 거울": "https://link.coupang.com/a/gwXnRycH4C", "스피너": "https://link.coupang.com/a/gwXovGaO96", "하이체어": "https://link.coupang.com/a/gwXo3NNFzE", "젖병": "https://link.coupang.com/a/gwXpJ9IPSu", "숟가락": "https://link.coupang.com/a/gwXqoSTMfA", "베이비룸 울타리": "https://link.coupang.com/a/gwXqZ05dU4", "투명 워터매트": "https://link.coupang.com/a/gwXrAQrJlY", "그림 카드": "https://link.coupang.com/a/gwXshfIT5F", "수직 기둥형 원목 교구": "https://link.coupang.com/a/gwXtq4FpTw", "통": "https://link.coupang.com/a/gwXtY2b1ye", "아기가 좋아하는 인형": "https://link.coupang.com/a/gwXuzC1OdU", "인형 하나": "https://link.coupang.com/a/gwXu3WVXzg", "쿠션 또는 수유쿠션": "https://link.coupang.com/a/gwXvQZkEUe", "욕조": "https://link.coupang.com/a/gwXwpf2FtQ", "비눗방울": "https://link.coupang.com/a/gwXwXdxtfM", "얇은 손수건": "https://link.coupang.com/a/gwXxyBlgEm", "모빌 + 고리": "https://link.coupang.com/a/gwXyhi4qAu", "의성어": "https://link.coupang.com/a/gwXyVuez5o", "색이 선명한 그림책 + 같은 색 모빌": "https://link.coupang.com/a/gwXzsd37eK", "조명": "https://link.coupang.com/a/gwXz2N4tLo", "아기 체육관 / 바운서": "https://link.coupang.com/a/gwXAKUTMM8", "작동 완구 또는 손": "https://link.coupang.com/a/gwXBisGIPQ", "젖병 쉐이커 등 준비 소리가 나는 것": "https://link.coupang.com/a/gwXB2FTJM4", "미역": "https://link.coupang.com/a/gwXCGqGzq8", "소고기": "https://link.coupang.com/a/gwXDois8zs", "단호박": "https://link.coupang.com/a/gwXDX4zaWi", "쌀": "https://link.coupang.com/a/gwXEQbqfgO", "아기 치즈": "https://link.coupang.com/a/gwXFomPopU", "플레인 요거트": "https://link.coupang.com/a/gwXFWLxlLg", "달걀": "https://link.coupang.com/a/gwXGtjESBg", "흰살생선": "https://link.coupang.com/a/gwXG1dEYLI", "고구마": "https://link.coupang.com/a/gwXHyKSIyi", "작은 공": "https://link.coupang.com/a/gwXh0LuVW0", "찍찍이 놀이책": "https://link.coupang.com/a/hkLIxTBFIW", "딸랑이": "https://link.coupang.com/a/hkLItcAsKq", "그림책": "https://link.coupang.com/a/hkLH3xSnOS", "아기 과자": "https://link.coupang.com/a/hkLdrIFvQ4", "유아용 오픈컵": "https://link.coupang.com/a/hkLHcRV7QW", "장난감 자동차": "https://link.coupang.com/a/hkLfi4k52y", "모양 끼우기 장난감": "https://link.coupang.com/a/hkLnbYfW0q", "굵은 크레용": "https://link.coupang.com/a/hkLHWh6gw0", "마카로니": "https://link.coupang.com/a/hkLIbxLB3B", "유아용 점토": "https://link.coupang.com/a/hkLIkXrf8C"}; /* 2026-08-26 도우미 결과 내장(46키워드) + 2026-09-25 v28 놀이 준비물 10키워드. 설정에 등록한 링크가 있으면 그게 우선 */
+const PARTNER_DEFAULT={"흑백 초점책": "https://link.coupang.com/a/gwVRTqiPqC", "초점책": "https://link.coupang.com/a/gwXaSUS9RI", "모빌": "https://link.coupang.com/a/gwWb7eW7sy", "아기 체육관": "https://link.coupang.com/a/gwWdzoZk5I", "보드북": "https://link.coupang.com/a/gwXcVmtoZM", "치발기": "https://link.coupang.com/a/gwXdDR5Dy0", "매트": "https://link.coupang.com/a/gwXeggLnt6", "원목 블록": "https://link.coupang.com/a/gwXeWsbnYy", "마스킹 테이프": "https://link.coupang.com/a/gwXfq5Mdye", "공": "https://link.coupang.com/a/gwXh0LuVW0", "크기가 다른 공 여러 개": "https://link.coupang.com/a/gwXlAgimSi", "촉감책": "https://link.coupang.com/a/gwXmpqd8kC", "팝업북": "https://link.coupang.com/a/gwXndjm2JE", "안전 거울": "https://link.coupang.com/a/gwXnRycH4C", "스피너": "https://link.coupang.com/a/gwXovGaO96", "하이체어": "https://link.coupang.com/a/gwXo3NNFzE", "젖병": "https://link.coupang.com/a/gwXpJ9IPSu", "숟가락": "https://link.coupang.com/a/gwXqoSTMfA", "베이비룸 울타리": "https://link.coupang.com/a/gwXqZ05dU4", "투명 워터매트": "https://link.coupang.com/a/gwXrAQrJlY", "그림 카드": "https://link.coupang.com/a/gwXshfIT5F", "수직 기둥형 원목 교구": "https://link.coupang.com/a/gwXtq4FpTw", "통": "https://link.coupang.com/a/gwXtY2b1ye", "아기가 좋아하는 인형": "https://link.coupang.com/a/gwXuzC1OdU", "인형 하나": "https://link.coupang.com/a/gwXu3WVXzg", "쿠션 또는 수유쿠션": "https://link.coupang.com/a/gwXvQZkEUe", "욕조": "https://link.coupang.com/a/gwXwpf2FtQ", "비눗방울": "https://link.coupang.com/a/gwXwXdxtfM", "얇은 손수건": "https://link.coupang.com/a/gwXxyBlgEm", "모빌 + 고리": "https://link.coupang.com/a/gwXyhi4qAu", "의성어": "https://link.coupang.com/a/gwXyVuez5o", "색이 선명한 그림책 + 같은 색 모빌": "https://link.coupang.com/a/gwXzsd37eK", "조명": "https://link.coupang.com/a/gwXz2N4tLo", "아기 체육관 / 바운서": "https://link.coupang.com/a/gwXAKUTMM8", "작동 완구 또는 손": "https://link.coupang.com/a/gwXBisGIPQ", "젖병 쉐이커 등 준비 소리가 나는 것": "https://link.coupang.com/a/gwXB2FTJM4", "미역": "https://link.coupang.com/a/gwXCGqGzq8", "소고기": "https://link.coupang.com/a/gwXDois8zs", "단호박": "https://link.coupang.com/a/gwXDX4zaWi", "쌀": "https://link.coupang.com/a/gwXEQbqfgO", "아기 치즈": "https://link.coupang.com/a/gwXFomPopU", "플레인 요거트": "https://link.coupang.com/a/gwXFWLxlLg", "달걀": "https://link.coupang.com/a/gwXGtjESBg", "흰살생선": "https://link.coupang.com/a/gwXG1dEYLI", "고구마": "https://link.coupang.com/a/gwXHyKSIyi", "작은 공": "https://link.coupang.com/a/gwXh0LuVW0", "아기 과자": "https://link.coupang.com/a/hkLdrIFvQ4", "유아용 오픈컵": "https://link.coupang.com/a/hkLHcRV7QW", "장난감 자동차": "https://link.coupang.com/a/hkLfi4k52y", "모양 끼우기 장난감": "https://link.coupang.com/a/hkLnbYfW0q", "굵은 크레용": "https://link.coupang.com/a/hkLHWh6gw0", "그림책": "https://link.coupang.com/a/hkLH3xSnOS", "마카로니": "https://link.coupang.com/a/hkLIbxLB3B", "유아용 점토": "https://link.coupang.com/a/hkLIkXrf8C", "딸랑이": "https://link.coupang.com/a/hkLItcAsKq", "찍찍이 놀이책": "https://link.coupang.com/a/hkLIxTBFIW"}; /* 2026-08-26 도우미 결과 내장(46키워드) + 2026-09-25 v28 준비물 10개(파트너스 «간편 링크», 검색어: 아기 떡뻥·유아 오픈컵·유아 장난감 자동차·모양 맞추기 장난감·아기 크레용·유아 그림책·마카로니·유아 점토·아기 딸랑이·부직포 놀이책). 설정에 등록한 링크가 있으면 그게 우선 */
 function shopLink(kw,q){
   const k=kw.trim();
   if(shop.partner&&shop.partner[k]) return {url:shop.partner[k],partner:true};
@@ -659,6 +664,8 @@ function shopBtn(kw,label,q){
   if(l.partner) h='<div class="small" style="margin-bottom:6px">이 게시물은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</div>'+h;
   return '<div style="margin-top:10px">'+h+'</div>';
 }
+/* 테스터·소식 신청서(구글 폼). 홈페이지도 같은 주소를 쓴다 (_tools/site/src/build.mjs FORM_URL) */
+const TESTER_FORM="https://docs.google.com/forms/d/e/1FAIpQLScPD8GmYf7ExLq5OBNhAdhyfnNM-gqnJpGrucInWXRYDRVwyw/viewform";
 /* SHOP-KEYWORD-BEGIN — 홈페이지 만드는 도구(_tools/site)도 이 구간을 그대로 읽어 쓴다 */
 /* 준비물 첫 항목 → 쇼핑 키워드.
    · 같은 물건을 가리키는 다른 말은 이미 있는 파트너스 링크로 모은다(SHOP_ALIAS). 링크는 만들 때 정한 검색어를 그대로 여는 바로가기라, 뜻이 같은 것만 모은다.
@@ -672,6 +679,38 @@ function matKeyword(mat){
   return SHOP_ALIAS[m]||m;
 }
 /* SHOP-KEYWORD-END */
+/* TOY-REC-BEGIN — 놀이별 «이 놀이에 쓸 수 있는 장난감» (선택). 홈페이지 만드는 도구(_tools/site)와 자동 점검도 이 구간을 그대로 읽는다.
+   · 고르는 기준: ① 쿠팡 상품 페이지의 «최소연령»이 그 놀이의 시작 월령 이하(min) ② KC 인증번호가 있고 후기가 수백 건 이상 ③ 그 놀이의 핵심 동작을 실제로 할 수 있는 것.
+     연령 표기가 같은 종류 상품끼리도 3개월~36개월로 제각각이라, 표기만 믿지 않고 ②③을 함께 본다.
+   · 화면에는 브랜드·모델명을 적지 않는다 — «어떤 종류의 장난감인지»만 쓰고, 정확한 상품은 링크 너머 쿠팡 페이지에서 본다.
+   · 링크는 전부 파트너스 링크(link.coupang.com)이고 광고 표시 문구가 함께 나온다. 어느 링크가 어떤 상품인지는 드라이브 «파트너스링크_정리본.txt».
+   · bat:1 = 건전지가 들어가는 장난감(덮개 확인 문구가 붙는다). min = 쿠팡 표기 최소연령(개월). */
+const TOYS={
+  tissue:{n:"휴지 뽑기 장난감",d:"상자 속 천 휴지를 쭉 뽑는 장난감이에요.",u:"https://link.coupang.com/a/huO1YjzgiW",min:0},
+  phone:{n:"아기 장난감 전화",d:"진짜 휴대폰 대신 쥐여 줄 수 있는 장난감 전화예요.",u:"https://link.coupang.com/a/huO8KbjjNI",min:6,bat:1},
+  cube6:{n:"여섯 면 놀이 큐브",d:"여섯 면이 서로 다른 놀이로 된 큐브예요 — 한 면이 도형 끼우기예요.",u:"https://link.coupang.com/a/huO94zlVOC",min:6},
+  shapebox:{n:"모양 끼우기 큐브",d:"모양에 맞는 구멍에 도형 블록을 끼워 넣는 큐브예요.",u:"https://link.coupang.com/a/huPadQrflk",min:10},
+  cups:{n:"겹쳐 쌓는 컵",d:"크기가 달라 차곡차곡 겹쳐지는 컵 세트예요.",u:"https://link.coupang.com/a/huO16u8ubs",min:6},
+  rings:{n:"링 쌓기 장난감",d:"크기가 다른 링을 기둥에 끼우는 장난감이에요.",u:"https://link.coupang.com/a/huO2fnWxZA",min:6},
+  ball:{n:"스스로 굴러가는 공",d:"혼자 굴러가는 공이에요 (소리·불빛이 나요).",u:"https://link.coupang.com/a/huO9b9ezWS",min:6,bat:1},
+  watermat:{n:"물로 그리는 매트",d:"물 펜으로 그리면 마르면서 사라지는 매트예요 — 몇 번이고 그릴 수 있어요.",u:"https://link.coupang.com/a/huO9kROJLo",min:18},
+  roly:{n:"오뚝이",d:"흔들어도 다시 일어나는 오뚝이예요.",u:"https://link.coupang.com/a/huPwBfM6bA",min:3}
+};
+/* 놀이 번호 → [장난감, 이 놀이에서 쓰는 법] — 한 놀이에 최대 3개 */
+const TOY_PLAYS={
+  55:[["roly","흔들린 오뚝이가 멈출 때까지 같이 기다려 보세요."]],
+  56:[["rings","기둥에 링을 끼워 손 닿는 곳에 두고, 어떻게 빼는지 지켜보세요."]],
+  60:[["ball","혼자 굴러가는 걸 보며 «굴러간다! 멈췄다!» 하고 말해 주세요."]],
+  64:[["ball","아기에게서 조금 떨어진 자리에 «목표물»로 놓아 보세요."]],
+  73:[["ball","굴러가다 멈추는 순간에 «멈췄네» 하고 말해 주세요."]],
+  93:[["tissue","끝만 내놓고 «쑤욱!» 하는 이 놀이를 그대로 해 볼 수 있어요."]],
+  104:[["phone","먼저 귀에 대고 «여보세요?» 해 보이세요 — 진짜 휴대폰 대신 줄 수 있는 소품이에요."]],
+  117:[["shapebox","블록 한두 개만 꺼내 «쏙!» 하고 보여 주세요."],["cube6","여섯 면 중 도형 끼우기 면을 이 놀이에 쓰세요."]],
+  140:[["cups","«제일 큰 컵!»을 골라 줄 세운 뒤 겹쳐 넣어 보세요."],["rings","링을 «큰 것부터» 끼우며 크기를 말해 주세요."]],
+  153:[["watermat","물 펜으로 동그라미를 천천히 그려 보이세요 — 마르면 사라져서 몇 번이고 시범을 보일 수 있어요."]],
+  162:[["phone","인형 대신 전화로 «이름이 뭐예요?» 하고 물어보세요."]]
+};
+/* TOY-REC-END */
 
 /* ============ 월령 구간 (v28) ============
    0~8개월 놀이는 한 달 단위(m). 9개월부터는 «구간» 놀이 — m=구간 시작, to=구간 끝(예: 18~23개월).
@@ -1176,6 +1215,20 @@ function vBrowse(){
 }
 
 /* ============ 놀이 카드 ============ */
+/* 이 놀이에 쓸 수 있는 장난감 (선택) — 데이터는 위 TOY-REC 구간. 파트너스 링크라 광고 표시 문구를 함께 낸다 */
+function toyBlock(p){
+  const L=TOY_PLAYS[p.n]; if(!L||!L.length) return "";
+  let bat=false, rows="";
+  L.forEach(function(x){ const t=TOYS[x[0]]; if(!t) return; if(t.bat) bat=true;
+    rows+='<div class="toyrow"><a class="shopbtn" href="'+esc(t.u)+'" target="_blank" rel="noopener sponsored">🧸 '+esc(t.n)+' 보기</a>'
+      +'<div class="small">'+esc(t.d)+' '+esc(x[1])+'</div></div>'; });
+  if(!rows) return "";
+  return '<div class="toybox"><div class="tt">🧸 이 놀이에 쓸 수 있는 장난감 <span style="font-weight:600">(선택)</span></div>'
+    +'<div class="small">집에 있는 물건으로도 되는 놀이예요. 장난감이 하나 있으면 더 편한 집을 위한 예시입니다.</div>'
+    +'<div class="small" style="margin-top:6px">이 게시물은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</div>'
+    +rows
+    +'<div class="small" style="margin-top:10px">사기 전에 상품 페이지의 <b>사용 연령</b>과 <b>KC 인증 표시</b>를 확인해 주세요.'+(bat?' 건전지가 들어가는 장난감은 건전지 덮개가 단단히 닫히는지도 봐 주세요.':'')+'</div></div>';
+}
 function vCard(){
   const p=PLAYS.find(x=>x.n===curPlay);if(!p)return"<div>없는 놀이입니다.</div>";
   const st=pstate(p.n);
@@ -1187,6 +1240,7 @@ function vCard(){
   +'<div class="notice" style="font-size:12.5px">CDC 기준은 「평균」이 아니라 「10명 중 7~8명 이상」이에요. 아직 안 해도 2~3명은 안 하는 게 정상입니다.</div>';
   h+='<h3>준비물</h3><div style="font-size:14.5px;font-weight:600">'+fmt(p.mat)+'</div>';
   const kw=matKeyword(p.mat); if(kw)h+=shopBtn(kw);
+  h+=toyBlock(p);
   h+='<h3>해보기</h3><div style="font-size:15px">'+fmt(p.how)+'</div>';
   if(st.level<0)h+='<div class="notice" style="font-size:13.5px">지난번에 관심이 없었어요. 오늘은 <b>쉬운 버전</b>부터 ↓</div>';
   if(st.level>0)h+='<div class="notice mint" style="font-size:13.5px">지난번에 재밌어했어요! 오늘은 <b>심화 버전</b>도 좋아요 ↑</div>';
@@ -1195,8 +1249,8 @@ function vCard(){
   +'<div style="font-size:14px;margin-top:10px"><b>↑ 잘하면</b><br>'+fmt(p.up)+'</div>';
   h+='<h3>⚠ 주의 · 흔한 착각</h3><div style="font-size:14px">'+fmt(p.warn)+'</div>';
   if(p.mathEye){h+='<div class="mathbox"><div class="tt">📐 수학의 눈 — '+esc(p.mathEye.seed)+'</div>'
-  +'<div><b>지금:</b> '+esc(p.mathEye.now)+'</div><div style="margin-top:5px"><b>나중에:</b> '+esc(p.mathEye.later)+'</div>'
-  +'<div style="margin-top:5px"><b>봐줄 것:</b> '+esc(p.mathEye.watch)+'</div></div>'}
+  +'<div><b>지금:</b> '+fmt(p.mathEye.now)+'</div><div style="margin-top:5px"><b>나중에:</b> '+fmt(p.mathEye.later)+'</div>'
+  +'<div style="margin-top:5px"><b>봐줄 것:</b> '+fmt(p.mathEye.watch)+'</div></div>'}
   h+= p.srcRaw
    ? '<div class="srcbox">📍 <b>어디서 나온 놀이인가</b><br>'+fmt(p.srcRaw)+'</div>'
    : '<div class="srcbox">🔬 <b>연구 기반 놀이</b> — '+esc(p.ref||"공식 발달 지침의 활동 팁")+'에서 왔어요. 기록에서 태어난 놀이들과 달리 실제 해본 이야기가 아직 없어요 — 해보시고 «한 줄»을 남겨주시면 이 칸이 자랍니다.</div>';
@@ -3011,6 +3065,11 @@ function vSettings(){
   h+='<div class="card"><h2 class="hd" style="font-size:16px">📣 친구에게 알리기</h2>'
   +'<div class="small" style="margin-bottom:8px">카톡 대화방·오픈채팅에 앱 소개와 주소를 보낼 수 있어요.</div>'
   +'<button class="sec" onclick="appShare()">📣 공유하기</button></div>';
+  /* 플레이스토어 정식 출시에 필요한 테스터 모집 — 이메일만 받는 구글 폼. 앱 기록은 여전히 폰 안에만 */
+  h+='<div class="card"><h2 class="hd" style="font-size:16px">🧪 함께 만들기 — 테스터·소식 신청</h2>'
+  +'<div class="small" style="margin-bottom:8px">플레이스토어에 정식으로 올리려면 12명이 14일 동안 테스트판을 써 봐야 해요(무료, 안드로이드). 이메일만 남기면 초대를 보내 드려요. 아이폰이면 «소식만»으로.</div>'
+  +'<a class="sec" style="display:block;text-align:center;text-decoration:none" href="'+TESTER_FORM+'" target="_blank" rel="noopener">🧪 신청서 열기 (1분)</a>'
+  +'<div class="small" style="margin-top:6px">이메일은 초대·소식에만 쓰고, 이 앱의 기록과는 연결되지 않아요.</div></div>';
   h+='<div class="card"><h2 class="hd" style="font-size:16px">이 앱에 대해</h2><div style="font-size:13.5px;line-height:1.8;font-weight:600">'
   +'놀이 '+PLAYS.length+'개 중 '+PLAYS.filter(p=>p.src&&p.src.length).length+'개는 한 아기(2025년 12월생)의 <b>'+REC_DAYS+'일치 관찰 기록</b>에서 나왔어요(카드의 📍가 출처). 나머지 '+PLAYS.filter(p=>p.ref).length+'개는 기록이 못 채운 자리와 그 뒤 생후 '+MAX_PLAY_M+'개월까지를 미국 CDC 공식 발달 이정표·활동 팁으로 채운 것이고, 카드에 🔬로 표시돼요.<br><br>'
   +'이 앱이 하지 않는 것: 발달 점수, 또래 비교, 연속 기록 배지, 밀린 알림, 아기에게 보여주는 화면.<br><br>'
