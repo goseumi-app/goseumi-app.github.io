@@ -96,6 +96,50 @@ if (PLAYS && PARTNER) {
   }
 }
 
+/* 장난감 추천(TOY-REC) — 놀이 카드의 «🧸 이 놀이에 쓸 수 있는 장난감 (선택)».
+   · 링크는 전부 파트너스 링크(link.coupang.com)  · 월령 게이트: 쿠팡 표기 최소연령(min) ≤ 놀이 시작 월령
+   · 화면 문구에 브랜드·모델명·효능/과장 표현이 없을 것  · 어느 놀이에도 안 쓰이는 장난감·없는 놀이/장난감을 가리키는 연결이 없을 것
+   · 카드를 그리는 toyBlock에 공정위 문구와 «사용 연령·KC» 안내가 함께 있을 것 */
+if (PLAYS) {
+  const tm = js.match(/\/\* TOY-REC-BEGIN[^*]*\*\/([\s\S]*?)\/\* TOY-REC-END \*\//);
+  if (!tm) bad('장난감 추천 구간(TOY-REC) 없음');
+  else {
+    let f; try { f = new Function(tm[1]+'\nreturn {TOYS, TOY_PLAYS};')(); } catch(e){ bad('장난감 추천 구간 실행 오류', e.message); }
+    if (f) {
+      const {TOYS, TOY_PLAYS} = f; const problems=[]; const used=new Set(); let links=0;
+      const BRANDS = /하베브릭스|브이텍|VTech|핑크퐁|아기상어|아띠래빗|에듀플레이|쿠쿠토이즈|졸리베이비|Jollybaby|오즈토이|내친구아리|콤비|Combi|키저스|말랑하니|리틀클라우드|피셔프라이스|Fisher/i;
+      const CLAIMS = /발달에 (좋|도움)|두뇌|지능|천재|영재|효과|증명|입증|똑똑|창의력|집중력|IQ|1위|최고|베스트|인기|강력 ?추천/;
+      const textBad = (where, x) => { if (BRANDS.test(x)) problems.push(where+': 브랜드명 «'+x.match(BRANDS)[0]+'»'); if (CLAIMS.test(x)) problems.push(where+': 효능·과장 표현 «'+x.match(CLAIMS)[0]+'»'); };
+      for (const [k,t] of Object.entries(TOYS)) {
+        if (!/^https:\/\/link\.coupang\.com\/a\/[A-Za-z0-9]+$/.test(t.u||'')) problems.push(k+': 파트너스 링크 형식 아님');
+        if (!t.n || !t.d) problems.push(k+': 이름·설명이 비어 있음');
+        if (typeof t.min !== 'number') problems.push(k+': min(쿠팡 표기 최소연령) 없음');
+        textBad(k, (t.n||'')+' '+(t.d||''));
+      }
+      for (const [n, arr] of Object.entries(TOY_PLAYS)) {
+        const p = PLAYS.find(q=>q.n===+n);
+        if (!p) { problems.push('#'+n+': 없는 놀이'); continue; }
+        if (!Array.isArray(arr) || !arr.length || arr.length>3) problems.push('#'+n+': 장난감은 1~3개');
+        const seen = new Set();
+        for (const [k, line] of (arr||[])) {
+          const t = TOYS[k]; used.add(k); links++;
+          if (!t) { problems.push('#'+n+': 없는 장난감 '+k); continue; }
+          if (seen.has(k)) problems.push('#'+n+': '+k+' 중복'); seen.add(k);
+          if (t.min > p.m) problems.push('#'+n+': '+k+' 최소연령 '+t.min+'개월 > 놀이 시작 '+p.m+'개월');
+          if (!line) problems.push('#'+n+': '+k+' 쓰는 법 문구 없음'); else textBad('#'+n+' '+k, line);
+        }
+      }
+      const orphans = Object.keys(TOYS).filter(k=>!used.has(k));
+      if (orphans.length) problems.push('어느 놀이에도 안 쓰인 장난감: '+orphans.join(','));
+      const fn = (js.match(/function toyBlock\(p\)\{[\s\S]*?\n\}/)||[''])[0];
+      if (!fn.includes('쿠팡 파트너스 활동의 일환으로')) problems.push('toyBlock에 공정위 문구 없음');
+      if (!fn.includes('사용 연령') || !fn.includes('KC')) problems.push('toyBlock에 연령·KC 안내 없음');
+      problems.length ? bad('장난감 추천 규칙', problems.slice(0,6).join(' · '))
+        : ok('장난감 추천 — 장난감 '+Object.keys(TOYS).length+'종 · 놀이 '+Object.keys(TOY_PLAYS).length+'개 · 연결 '+links+'건 (전부 파트너스 링크 · 월령 게이트 통과 · 브랜드·효능 문구 없음 · 카드에 공정위·연령·KC 안내)');
+    }
+  }
+}
+
 /* 절대 금지선 — 「앱 방향」 메모에 적힌 것. 코드에 다시 기어들어오는 걸 막는다.
    숫자는 «지금 허용된 등장 횟수». 새로 늘면 실패한다. 왜 허용인지는 옆에 적어둔다. */
 const ALLOWED = {
@@ -220,6 +264,34 @@ async function fresh(opts={}) {
     return {inView: b.bottom<=innerHeight+2 && b.top>=0, top:Math.round(b.top), h:innerHeight}; });
   r.inView ? ok('밤중 모드에서도 하단 탭이 화면에 고정')
            : bad('밤중 모드에서 하단 탭이 화면 밖', 'top='+r.top+' / 화면 '+r.h);
+  await ctx.close();
+}
+
+/* 2-3b. 놀이 카드 전부 — «**»가 글자 그대로 보이지 않고(v28에서 «수학의 눈» 19곳에 그대로 보였다), 장난감 칸이 데이터대로 나오는지 */
+{
+  const {ctx,page,errs} = await fresh();
+  const r = await page.evaluate(()=>{
+    const stars=[], wrong=[], noAd=[];
+    for (const p of PLAYS) {
+      go('card', p.n);
+      const main = document.querySelector('main');
+      if (main.innerText.includes('**')) stars.push('#'+p.n);
+      const want = (typeof TOY_PLAYS!=='undefined' && TOY_PLAYS[p.n]) || [];
+      const box = main.querySelector('.toybox'); const links = box ? [...box.querySelectorAll('a.shopbtn')] : [];
+      if (links.length !== want.length) wrong.push('#'+p.n+' ('+links.length+'/'+want.length+')');
+      else if (want.length) {
+        const hrefs = links.map(a=>a.getAttribute('href'));
+        if (want.some((w,i)=>hrefs[i]!==TOYS[w[0]].u)) wrong.push('#'+p.n+' 링크');
+        if (!box.innerText.includes('쿠팡 파트너스 활동의 일환으로')) noAd.push('#'+p.n);
+      }
+    }
+    return {stars, wrong, noAd, n:PLAYS.length};
+  });
+  r.stars.length ? bad('놀이 카드에 ** 표시가 그대로 보임', r.stars.slice(0,8).join(','))
+                 : ok('놀이 카드 '+r.n+'장 — «**» 표시가 그대로 보이는 곳 없음');
+  r.wrong.length || r.noAd.length ? bad('장난감 칸이 데이터와 다름', (r.wrong.concat(r.noAd.map(x=>x+' 공정위 문구 없음'))).slice(0,6).join(' · '))
+                                  : ok('놀이 카드의 장난감 칸이 데이터와 같음 (장난감 있는 놀이에만 · 링크 일치 · 공정위 문구 함께)');
+  errs.length ? bad('놀이 카드 렌더 중 자바스크립트 오류', errs.slice(0,2).join(' / ')) : null;
   await ctx.close();
 }
 
@@ -405,6 +477,16 @@ async function fresh(opts={}) {
     /* 3-5. 광고(파트너스) 링크가 있는 쪽엔 공정위 문구 */
     const adNo = Object.entries(txt).filter(([k,h])=>h.includes('link.coupang.com')&&!h.includes('쿠팡 파트너스 활동의 일환으로')).map(([k])=>k);
     adNo.length ? bad('파트너스 링크에 공정위 문구 없음', adNo.join(', ')) : ok('파트너스 링크 쪽 공정위 문구 있음');
+    /* 3-5b. 놀이 쪽 «장난감 예시» — 앱의 TOY_PLAYS와 같은 링크가 같은 수만큼 */
+    { const tm = js.match(/\/\* TOY-REC-BEGIN[^*]*\*\/([\s\S]*?)\/\* TOY-REC-END \*\//);
+      if (tm) {
+        const {TOYS, TOY_PLAYS} = new Function(tm[1]+'\nreturn {TOYS, TOY_PLAYS};')();
+        const want = Object.values(TOY_PLAYS).flat().map(([k])=>TOYS[k].u).sort();
+        const all = Object.entries(txt).filter(([k])=>/^play\/\d+\.html$/.test(k)).map(([,h])=>h).join('\n');
+        const got = [...all.matchAll(/<ul class="toys">([\s\S]*?)<\/ul>/g)].flatMap(m=>[...m[1].matchAll(/href="(https:\/\/link\.coupang\.com\/a\/[^"]+)"/g)].map(x=>x[1])).sort();
+        JSON.stringify(want)!==JSON.stringify(got) ? bad('홈페이지 장난감 예시가 앱과 다름', '앱 '+want.length+'건 / 쪽 '+got.length+'건'+(want.length===got.length?' (건수는 같지만 링크가 다름)':'')+' — 홈페이지를 다시 만들어야 함 (_tools/site/README.md)')
+                                                   : ok('홈페이지 장난감 예시 '+got.length+'건 — 앱과 같은 링크');
+      } }
     /* 3-6. 구조화 데이터·sitemap·내부 링크 */
     const ldBad=[]; for (const [k,h] of Object.entries(txt)) for (const m of h.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) { try{ JSON.parse(m[1]); }catch(e){ ldBad.push(k); } }
     const exists = u => { let p=u.split(/[?#]/)[0]; if(p.endsWith('/')) p+='index.html'; return fs.existsSync(path.join(ROOT,p.replace(/^\//,''))); };
