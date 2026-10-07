@@ -76,10 +76,10 @@ for(const [ua,exp] of [[UA.safariI,'아이폰'],[UA.chromeA,'안드로이드']])
     return {href:l.map(x=>x.getAttribute('href')), rel:l.map(x=>x.rel), note:(a.querySelector('.toy-note')||{}).textContent||'', ad:(document.querySelector('.ad-note')||{}).textContent||'', over:document.documentElement.scrollWidth-innerWidth, order:[...a.querySelectorAll('dt')].map(d=>d.textContent).join('>')}; });
   (r.href.length===1&&r.href[0]==='https://link.coupang.com/a/huO1YjzgiW'&&/sponsored/.test(r.rel[0])&&r.note.includes('사용 연령')&&r.note.includes('KC 인증')&&r.ad.includes('쿠팡 파트너스 활동의 일환')&&r.over<=0&&r.order==='준비물>장난감 예시>이렇게 해요>어려워하면>한 단계 더')
     ?ok('/play/9.html #93 — 장난감 예시 1개(파트너스 링크·sponsored)·연령/KC 안내·위쪽 공정위 문구·360px 넘침 없음'):bad('#93 장난감 예시',JSON.stringify(r)); await ctx.close(); }
-{ const {ctx,p}=await pg(UA.chromeA); const want={6:2,7:2,8:1,9:1,12:1,15:1,24:1,30:2}; const got={}; const noAd=[];
+{ const {ctx,p}=await pg(UA.chromeA); const want={0:1,1:2,2:1,4:1,5:1,6:3,7:2,8:2,9:1,12:2,15:1,24:1,30:2}; const got={}; const noAd=[];
   for(const m of [0,1,2,3,4,5,6,7,8,9,12,15,18,24,30]){ await p.goto(B+'/play/'+m+'.html'); const x=await p.evaluate(()=>({t:document.querySelectorAll('.toys').length, ad:!!document.querySelector('.ad-note')})); if(x.t) got[m]=x.t; if(x.t&&!x.ad) noAd.push(m); }
   const diff=Object.keys({...want,...got}).filter(k=>want[k]!==got[k]);
-  (!diff.length&&!noAd.length)?ok('장난감 예시가 있는 쪽 8곳(11놀이)에 모두 광고 안내 문구',JSON.stringify(got)):bad('장난감 예시 쪽 분포',JSON.stringify({diff,noAd,got})); await ctx.close(); }
+  (!diff.length&&!noAd.length)?ok('장난감 예시가 있는 쪽 13곳(20놀이)에 모두 광고 안내 문구',JSON.stringify(got)):bad('장난감 예시 쪽 분포',JSON.stringify({diff,noAd,got})); await ctx.close(); }
 { const {ctx,p}=await pg(UA.chromeA); await p.goto(B+'/play/15.html');
   const n=await p.evaluate(()=>[...document.querySelectorAll('#p117 .toys a.buy')].map(a=>a.textContent.trim()));
   (n.length===2&&n[0].includes('모양 끼우기 큐브')&&n[1].includes('여섯 면 놀이 큐브'))?ok('/play/15.html #117 — 장난감 2개',n.join(' | ')):bad('#117 장난감',JSON.stringify(n)); await ctx.close(); }
