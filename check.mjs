@@ -346,6 +346,97 @@ async function fresh(opts={}) {
   await ctx.close();
 }
 
+/* 2-5d. 쓰던 글이 버튼 한 번에 지워지지 않나 — 2026-10-17 제보: 놀이 «한 줄»을 먼저 쓰고 «어땠나요?»·«컨디션»을 누르면 글이 사라졌다.
+   원인은 버튼이 화면 전체를 다시 그리는 것. 같은 원인이 있던 지나간 잠 적기·오늘 쓰기·첫 설정도 함께 본다 */
+try {
+  const {ctx,page,errs} = await fresh();
+  page.on('dialog', d=>d.accept());
+  page.setDefaultTimeout(4000);   /* 버튼이 없으면 30초 기다리지 말고 바로 ❌ */
+  const lost = [];
+  /* ① 놀이 한 줄 → 반응 → 컨디션 → 저장 */
+  await page.evaluate(()=>{ playLogs=[]; logs=[]; save(); go('feedback', PLAYS[0].n); }); await page.waitForTimeout(120);
+  await page.fill('#fbNote','왼손으로만 집었다');
+  await page.click('.emobtn >> nth=0'); await page.click('.condbtn >> nth=1');
+  const fbv = await page.inputValue('#fbNote');
+  if (fbv!=='왼손으로만 집었다') lost.push('놀이 한 줄 '+JSON.stringify(fbv));
+  const picked = await page.evaluate(()=>({res:fb.res, cond:fb.cond, on:document.querySelectorAll('.emobtn.on,.condbtn.on').length}));
+  if (!(picked.res && picked.cond && picked.on===2)) lost.push('반응·컨디션 표시 '+JSON.stringify(picked));
+  await page.click('button.pri:has-text("저장")'); await page.waitForTimeout(150);
+  const saved = await page.evaluate(()=>({pl:playLogs.slice(-1)[0]||{}, lg:logs.slice(-1)[0]||{}}));
+  if (!(saved.pl.res===picked.res && saved.pl.cond===picked.cond && saved.lg.output==='왼손으로만 집었다')) lost.push('놀이 저장 '+JSON.stringify(saved));
+  /* ② 지나간 잠 — 시각을 적고 «밤잠»을 눌러도 13:00~14:30으로 돌아가지 않는다 */
+  await page.evaluate(()=>{ go('sleep'); slForm=true; render(); }); await page.waitForTimeout(120);
+  await page.fill('#slAddS','21:10'); await page.fill('#slAddE','06:40');
+  await page.click('.condbtn:has-text("밤잠")');
+  const sv = (await page.inputValue('#slAddS'))+'~'+(await page.inputValue('#slAddE'));
+  if (sv!=='21:10~06:40') lost.push('지나간 잠 '+sv);
+  /* ③ 오늘 쓰기 — 오늘 기록 하나를 지워도 쓰던 칸·영역이 남고, 저장하면 비워진다 */
+  await page.evaluate(()=>{ logs=[{date:todayStr(),input:'지울 것',output:'',note:'',doms:[]}]; save(); logMode='write'; go('log'); }); await page.waitForTimeout(120);
+  await page.fill('#lgIn','공 세 개'); await page.fill('#lgOut','큰 공만 만짐');
+  await page.click('#lgDoms .condbtn >> nth=0');
+  await page.click('button.ghost:has-text("지움")'); await page.waitForTimeout(150);
+  const lv = await page.evaluate(()=>[$('#lgIn').value, $('#lgOut').value, document.querySelectorAll('#lgDoms .condbtn.on').length, logs.length]);
+  if (!(lv[0]==='공 세 개' && lv[1]==='큰 공만 만짐' && lv[2]===1 && lv[3]===0)) lost.push('오늘 쓰기 '+JSON.stringify(lv));
+  await page.click('button.pri:has-text("저장")'); await page.waitForTimeout(150);
+  const lc = await page.evaluate(()=>[$('#lgIn').value, logs.length, (logs[0]||{}).doms]);
+  if (!(lc[0]==='' && lc[1]===1 && (lc[2]||[]).length===1)) lost.push('오늘 쓰기 저장 '+JSON.stringify(lc));
+  await ctx.close();
+  /* ④ 첫 설정 — 생일·이름을 적고 «예정일보다 이르게»를 눌러도 남는다 */
+  const c2 = await browser.newContext({viewport:{width:412,height:900}});
+  const p2 = await c2.newPage(); const e2 = []; p2.on('pageerror', e=>e2.push(e.message)); p2.setDefaultTimeout(4000);
+  await p2.goto(BASE); await p2.waitForTimeout(400);
+  await p2.fill('#obBirth','2026-03-01'); await p2.fill('#obName','봄이');
+  await p2.click('button.ghost:has-text("예정일보다")'); await p2.waitForTimeout(100);
+  const ov = [await p2.inputValue('#obBirth'), await p2.inputValue('#obName'), await p2.locator('#obDue').count()];
+  if (!(ov[0]==='2026-03-01' && ov[1]==='봄이' && ov[2]===1)) lost.push('첫 설정 '+JSON.stringify(ov));
+  await c2.close();
+  const allErr = errs.concat(e2);
+  (lost.length || allErr.length)
+    ? bad('쓰던 글이 버튼 한 번에 지워짐', lost.concat(allErr.slice(0,2)).join(' / '))
+    : ok('쓰던 글 보존 — 놀이 한 줄·지나간 잠·오늘 쓰기·첫 설정에서 버튼을 눌러도 남음');
+} catch(e) { bad('쓰던 글이 버튼 한 번에 지워짐', '검사 중단: '+String(e.message).split('\n')[0]); }
+
+/* 2-5e. 이유식 식단 지우기 — 2026-10-17 제보: 보여 주려고 짜 본 식단이 «하루 요약»(시트에 붙여 넣는 글)에 계속 섞여 나왔다.
+   지우면 요약·달력에서 빠지고, 먹어본 음식은 남고, 다른 버튼이나 앱을 다시 열어도 식단이 몰래 되살아나지 않아야 한다 */
+try {
+  const {ctx,page,errs} = await fresh();
+  page.on('dialog', d=>d.accept());
+  page.setDefaultTimeout(4000);
+  const probs = [];
+  const before = await page.evaluate(()=>{
+    ['쌀','소고기','애호박','양배추','브로콜리'].forEach(n=>feed.tried[n]={d:'이전',r:'ok'});
+    buildMonth(todayStr()); save();
+    return {days:Object.keys(feed.plan).length, dig:/이유식/.test(dayDigest()), cal:calMarks(todayStr()).f};
+  });
+  if (!(before.days>=28 && before.dig && before.cal)) probs.push('준비(식단 만들기) 실패 '+JSON.stringify(before));
+  await page.evaluate(()=>go('food')); await page.waitForTimeout(150);
+  await page.click('button.ghost:has-text("식단 지우기")'); await page.waitForTimeout(150);
+  const after = await page.evaluate(()=>({days:Object.keys(feed.plan).length, dig:/이유식/.test(dayDigest()), cal:calMarks(todayStr()).f,
+    tried:Object.keys(feed.tried).length, card:/30초면/.test(document.querySelector('main').innerText)}));
+  if (!(after.days===0 && !after.dig && !after.cal && after.tried===5 && after.card)) probs.push('지운 뒤 '+JSON.stringify(after));
+  /* 하루 몇 끼·단계 바꾸기·새 재료 관찰 시작/끝 — 식단이 없으면 새로 만들지 않는다 */
+  await page.evaluate(()=>{ window.prompt=()=> '2'; setMeals(); stageOverride(); watchStart('달걀노른자'); feed.watch.start=addDays(todayStr(),-3); watchDone('ok'); });
+  await page.waitForTimeout(150);
+  const regrow = await page.evaluate(()=>Object.keys(feed.plan).length);
+  if (regrow) probs.push('다른 버튼이 식단을 다시 만듦 ('+regrow+'일)');
+  /* 손으로 만든 빈 날 + 다시 열기 — 옛 형식 자동 이행이 한 달 치를 되살리지 않는다. 끼니 없는 날은 요약에 «이유식»이 안 나온다 */
+  await page.evaluate(()=>{ feed.plan[todayStr()]={meals:[{items:[]}],test:null,manual:1}; save(); });
+  const emptyDig = await page.evaluate(()=>/이유식/.test(dayDigest()));
+  if (emptyDig) probs.push('끼니 없는 날에 요약 «이유식» 제목');
+  await page.reload(); await page.waitForTimeout(500);
+  const reopened = await page.evaluate(()=>Object.keys(feed.plan).length);
+  if (reopened!==1) probs.push('다시 열었더니 식단 '+reopened+'일');
+  /* 다시 만들 수는 있어야 한다 */
+  await page.evaluate(()=>{ feed.plan={}; feed.watch=null; save(); go('food'); }); await page.waitForTimeout(150);
+  await page.click('button.sec:has-text("한 달 식단 만들기")'); await page.waitForTimeout(150);
+  const again = await page.evaluate(()=>({days:Object.keys(feed.plan).length, dig:/이유식/.test(dayDigest())}));
+  if (!(again.days>=28 && again.dig)) probs.push('다시 만들기 '+JSON.stringify(again));
+  (probs.length || errs.length)
+    ? bad('이유식 식단 지우기 이상', probs.concat(errs.slice(0,2)).join(' / '))
+    : ok('이유식 식단 지우기 — 하루 요약·달력에서 빠지고, 먹어본 음식은 남고, 다른 버튼·다시 열기로 되살아나지 않음');
+  await ctx.close();
+} catch(e) { bad('이유식 식단 지우기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
+
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
   const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
