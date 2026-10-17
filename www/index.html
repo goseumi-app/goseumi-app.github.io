@@ -738,34 +738,56 @@ function bandLabel(m){ const l=playsAt(m); if(!l.length)return m+"개월";
 /* 실제 관찰 기록에서 나온 놀이가 있는 가장 큰 월령 — 그 뒤는 CDC 이정표·활동 팁 */
 function recMaxM(){ const r=PLAYS.filter(p=>p.srcRaw); return r.length?Math.max.apply(null,r.map(p=>p.m)):-1; }
 
-/* ============ 놀이 추천 (v1 로직 유지) ============ */
+/* ============ 놀이 추천 ============
+   2026-10-17 제보: «매번 같은 놀이가 반복된다». 원인은 두 가지였다.
+   ① 9개월부터는 한 구간(예: 9~11개월)에 영역별 놀이가 3개뿐이라 며칠이면 한 바퀴 돈다 → 놀이 자체를 늘려야 한다(별도 작업).
+   ② 추천이 «최근 2일만 피하고» 날짜 씨앗으로 뽑아서, 풀에 열 개가 있어도 같은 것이 자주 다시 나왔다.
+   그래서 이제는 «가장 오래 안 보인 놀이부터» 돌린다 — 한 번도 안 보인 놀이가 먼저, 그다음 마지막으로 본 날이 가장 오래된 것.
+   풀을 한 바퀴 다 돌기 전에는 같은 놀이가 다시 나오지 않는다. */
+function lastSeenMap(){
+  /* 놀이별 마지막으로 «추천되거나 해본» 날 */
+  const seen={};
+  Object.keys(sugCache).forEach(d=>{ const v=sugCache[d]; (Array.isArray(v)?v:(v&&v.l)||[]).forEach(n=>{ if(!seen[n]||seen[n]<d)seen[n]=d; }); });
+  playLogs.forEach(l=>{ if(!seen[l.n]||seen[l.n]<l.date)seen[l.n]=l.date; });
+  return seen;
+}
+/* 반응에서 «쉬기»로 정한 놀이 — 세 번 연속 관심 없음(14일), 3일째 못 함(7일) */
+function resting(n,t){ const st=playState[n]; return !!(st&&st.rest&&daysBetween(st.rest,t)>=0&&daysBetween(st.rest,t)<(st.restDays||14)); }
 function suggestToday(){
   /* v24: 영역별 1개씩 — 고루 발달하도록. 관심 영역이 있으면 맨 앞에 세운다 */
   const t=todayStr();
   const cached=sugCache[t];
-  if(cached&&!Array.isArray(cached)&&cached.v===2)return cached.l;   /* 옛 2개짜리 캐시는 무시하고 새로 뽑는다 */
+  if(cached&&!Array.isArray(cached)&&cached.v===3)return cached.l;   /* 옛 형식 캐시는 무시하고 새로 뽑는다 */
   const m=Math.min(monthAge(),MAX_PLAY_M);
   const cur=playsAt(m), start=cur.length?Math.min.apply(null,cur.map(p=>p.m)):m;
+  const bandEnd=cur.length?Math.max.apply(null,cur.map(pEnd)):m;
   let pool=PLAYS.filter(p=>(p.m<=m&&m<=pEnd(p))||(start>0&&p.m<=start-1&&start-1<=pEnd(p)));
   if(!pool.length)pool=PLAYS.filter(p=>p.m>=6);
-  const recent=new Set();
-  Object.keys(sugCache).forEach(d=>{ if(daysBetween(d,t)<=2&&daysBetween(d,t)>=0){
-    const v=sugCache[d]; (Array.isArray(v)?v:(v&&v.l)||[]).forEach(n=>recent.add(n)); }});
-  playLogs.forEach(l=>{if(daysBetween(l.date,t)<=2)recent.add(l.n)});
+  const nextBand=PLAYS.filter(p=>p.m===bandEnd+1);   /* 다음 구간 — 두 번 연속 재밌어한 영역에만 섞는다 */
+  const seen=lastSeenMap();
   const seed=hash(t+(child?child.birth:""));
   const chosen=child&&child.domain&&child.domain!=="none"?child.domain:null;
   const order=DOMS.slice().sort((a,b)=>(a===chosen?-1:0)-(b===chosen?-1:0));
   const res=[];
+  const pick=(cs,i)=>{
+    const never=cs.filter(p=>!seen[p.n]);
+    if(never.length) return never[(seed+i*7)%never.length];
+    const d0=cs.map(p=>seen[p.n]).sort()[0];
+    const tie=cs.filter(p=>seen[p.n]===d0);
+    return tie[(seed+i*7)%tie.length];
+  };
   order.forEach((d,i)=>{
     /* 1차 영역 우선 — 부영역(dom2) 매칭은 1차가 없을 때만. 안 그러면 화면에 같은 영역 칩이 두 번 보인다 */
-    let cs=pool.filter(p=>p.dom===d&&!recent.has(p.n)&&!res.includes(p.n));
-    if(!cs.length)cs=pool.filter(p=>p.dom===d&&!res.includes(p.n));
-    if(!cs.length)cs=pool.filter(p=>p.dom2===d&&!recent.has(p.n)&&!res.includes(p.n));
-    if(!cs.length)cs=pool.filter(p=>p.dom2===d&&!res.includes(p.n));
-    if(cs.length)res.push(cs[(seed+i*7)%cs.length].n);
+    const upgraded=pool.some(p=>p.dom===d&&(playState[p.n]||{}).happy>=2);
+    const base=upgraded?pool.concat(nextBand):pool;
+    const ok=p=>!res.includes(p.n)&&!resting(p.n,t);
+    let cs=base.filter(p=>p.dom===d&&ok(p));
+    if(!cs.length)cs=base.filter(p=>p.dom2===d&&ok(p));
+    if(!cs.length)cs=pool.filter(p=>(p.dom===d||p.dom2===d)&&!res.includes(p.n));
+    if(cs.length)res.push(pick(cs,i).n);
   });
-  if(!res.length){const any=pool.filter(p=>!recent.has(p.n)); if(any.length)res.push(any[seed%any.length].n);}
-  sugCache[t]={v:2,l:res};save();return res;
+  if(!res.length){const any=pool.filter(p=>!res.includes(p.n)); if(any.length)res.push(pick(any,0).n);}
+  sugCache[t]={v:3,l:res};save();return res;
 }
 function doneToday(n){ return playLogs.some(l=>l.date===todayStr()&&l.n===n) }
 function playDone(n,ev){
@@ -1323,14 +1345,18 @@ function fbSave(){
     logs.push({date:todayStr(),input:"놀이 "+p.n+" · "+p.name,output:nt,note:"",doms:doms}); }
   let msg="";const badCond=fb.cond&&fb.cond!=="fine";
   if(fb.res==="happy"){st.happy++;st.sad=0;st.skip=0;if(st.level<1)st.level++;
-    msg=st.happy>=2?"두 번 연속 재밌어했네요! 다음엔 심화 버전과 함께 다음 월령 놀이도 하나 섞어볼게요.":"좋았네요! 다음엔 조금 어려운 버전을 제안할게요."}
-  else if(fb.res==="meh"){st.happy=0;st.sad=0;st.skip=0;msg="알겠어요. 하루 건너 한 번 더 해보고, 그다음엔 다른 감각 영역으로 바꿔볼게요."}
+    msg=st.happy>=2?"두 번 연속 재밌어했네요! 이 영역은 이제 심화 버전부터 보여 드리고, 추천에 다음 월령 놀이도 섞을게요.":"좋았네요! 다음엔 조금 어려운 버전을 제안할게요."}
+  else if(fb.res==="meh"){st.happy=0;st.sad=0;st.skip=0;msg="알겠어요. 다른 놀이들을 먼저 한 바퀴 돌고 나서 다시 보여 드릴게요."}
   else if(fb.res==="sad"){st.happy=0;
     if(child.domain===p.dom)domSad++;
     if(badCond){msg="그때 "+CONDS.find(c=>c[0]===fb.cond)[1].split(" ").slice(1).join(" ")+" 상태였네요. 아이가 못 하는 게 아니라 타이밍 문제일 수 있어요. 난이도는 그대로 두고 컨디션 좋을 때 다시 볼게요."}
     else{st.sad++;if(st.level>-1)st.level--;
-      msg=st.sad>=3?"세 번 연속 관심이 없었네요. 이 놀이는 2주 쉬고 다른 영역으로 가볼게요. 아이 문제가 아니라 시기 문제일 가능성이 커요.":"알겠어요. 다음엔 쉬운 버전으로 제안할게요."}}
-  else{st.skip++;msg=st.skip>=3?"3일째 못 하셨네요. 부모 시간이 문제일 수 있으니 더 짧은 놀이로 바꿔볼게요. 못 한 날은 잘못이 아니에요.":"괜찮아요. 내일 다시 제안할게요. 아무 판단도 하지 않아요."}
+      if(st.sad>=3){st.rest=todayStr();st.restDays=14;st.sad=0;   /* 2주 쉼 — 추천에서 빠진다 */
+        msg="세 번 연속 관심이 없었네요. 이 놀이는 2주 동안 추천에서 빼고 다른 놀이로 갈게요. 아이 문제가 아니라 시기 문제일 가능성이 커요.";}
+      else msg="알겠어요. 다음엔 쉬운 버전으로 제안할게요.";}}
+  else{st.skip++;
+    if(st.skip>=3){st.rest=todayStr();st.restDays=7;st.skip=0;msg="세 번 못 하셨네요. 이 놀이는 일주일 쉬고 다른 놀이를 먼저 보여 드릴게요. 못 한 날은 잘못이 아니에요.";}
+    else msg="괜찮아요. 다른 놀이를 먼저 보여 드리고, 이 놀이는 나중에 다시 제안할게요. 아무 판단도 하지 않아요.";}
   fb.note="";  /* 뒤로 가기로 이 화면에 다시 와도 같은 한 줄이 두 번 저장되지 않게 */
   save();
   $("#main").innerHTML='<div class="fade" style="text-align:center;padding-top:30px">'+mascot("happy",96)
