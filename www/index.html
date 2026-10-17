@@ -618,7 +618,7 @@ if(!vax.rec)vax.rec={}; if(!Array.isArray(vax.flu))vax.flu=[];
 /* 구버전 plan(배열) → {meals,test} 마이그레이션 */
 Object.keys(feed.plan||{}).forEach(d=>{ if(Array.isArray(feed.plan[d])) feed.plan[d]={meals:feed.plan[d],test:null}; });
 if(feed.testPause===undefined) feed.testPause=false;
-let view="home", curPlay=null, fb={res:null,cond:null}, calSel=null, calMonth=null, foodSel=null, planDay=null, logMode="write", growthKey="w";
+let view="home", curPlay=null, fb={res:null,cond:null,note:""}, calSel=null, calMonth=null, foodSel=null, planDay=null, logMode="write", growthKey="w";
 function save(){["child","logs","playLogs","playState","miles","sug","domSad","feed","growth","appts","shop","sleeps","night","vax","bigText"]
  .forEach((k,i)=>store.set(k,[child,logs,playLogs,playState,miles,sugCache,domSad,feed,growth,appts,shop,sleeps,night,vax,bigText][i]))}
 
@@ -868,7 +868,20 @@ function buildMonth(fromDs, delayFirstTest){
     }
   }
   feed.planMade=todayStr(); save();
-}function hasPlanAhead(){ let c=0; for(let d=0;d<7;d++){ if(feed.plan[addDays(todayStr(),d)]) c++; } return c>=4; }
+}
+/* 오늘 이후에 실제 끼니가 든 식단이 있나 — 없으면 «하루 몇 끼»·단계 변경·새 재료 관찰 같은 버튼이 식단을 몰래 새로 만들지 않는다 */
+function planAhead(){ const t=todayStr(); return Object.keys(feed.plan||{}).some(d=>d>=t && ((feed.plan[d]||{}).meals||[]).some(m=>m.items&&m.items.length)); }
+/* 식단 지우기 — 보여 주려고 짜 본 식단이 «하루 요약»(시트에 붙여 넣는 글)·달력·홈에 계속 섞여 나오던 문제(2026-10-17 제보).
+   식단표(feed.plan)만 지운다. 먹어본 음식·새 재료 관찰·이상 반응 기록은 그대로 둔다 */
+function planClear(){
+  const n=Object.keys(feed.plan||{}).length;
+  if(!n){ alert("지울 식단이 없어요."); return; }
+  if(!confirm("이유식 식단표를 지울까요? ("+n+"일 치, 지난 날짜 포함)\n\n· 하루 요약·달력·홈에서 식단이 빠져요.\n· 먹어본 음식과 새 재료 관찰 기록은 그대로 남아요.\n· 지운 식단표는 되살릴 수 없어요. 필요하면 다시 만들면 돼요.")) return;
+  feed.plan={}; feed.planMade=null; foodCalSel=null;
+  save(); render();
+  alert("식단표를 지웠어요. 하루 요약과 달력에도 더는 나오지 않아요.");
+}
+function hasPlanAhead(){ let c=0; for(let d=0;d<7;d++){ if(feed.plan[addDays(todayStr(),d)]) c++; } return c>=4; }
 function weekShopping(){
   const set=new Set();
   for(let d=0;d<7;d++){ const p=feed.plan[addDays(todayStr(),d)]; if(!p)continue;
@@ -881,7 +894,7 @@ let histBusy=false, navDepth=0;
 function go(v,arg){
   view=v;
   if(v==="card"||v==="browse")curPlay=arg;
-  if(v==="feedback"){curPlay=arg;fb={res:null,cond:null}}
+  if(v==="feedback"){curPlay=arg;fb={res:null,cond:null,note:""}}
   if(v==="foodDetail")foodSel=arg;
   if(v==="planDay")planDay=arg;
   /* 화면 이동을 히스토리에 쌓아 «뒤로가기 = 이전 화면»이 되게 한다.
@@ -979,11 +992,11 @@ function vOnboard(){
   if(s===1){
     h+='<div class="hero"><div>'+mascot("happy",80)+'</div><div class="bubble">안녕하세요! 저는 <b>고슴이</b>예요.<br>아이를 <b>평가하지 않고 바라보는</b> 앱이에요. 아기 생일부터 알려주세요.</div></div>';
     h+='<div class="card pop"><div class="sub" style="font-weight:800">1/3</div><div class="big hd">아이 생일이 언제인가요?</div>'
-    +'<label class="f">생년월일</label><input type="date" id="obBirth" value="'+(ob.birth||"")+'">'
+    +'<label class="f">생년월일</label><input type="date" id="obBirth" value="'+(ob.birth||"")+'" oninput="ob.birth=this.value" onchange="ob.birth=this.value">'
     +(ob.fromLanding?'<div class="small" style="margin-top:6px">홈페이지에서 넣은 생일을 가져왔어요. 맞는지 한 번만 확인해 주세요.</div>':'')
-    +'<label class="f">부르는 이름 (안 적어도 돼요)</label><input type="text" id="obName" placeholder="예: 봄이" value="'+esc(ob.name||"")+'">'
+    +'<label class="f">부르는 이름 (안 적어도 돼요)</label><input type="text" id="obName" placeholder="예: 봄이" value="'+esc(ob.name||"")+'" oninput="ob.name=this.value">'
     +'<div style="margin-top:10px"><button class="ghost" onclick="ob.preterm=!ob.preterm;render()">'+(ob.preterm?"▾":"▸")+' 예정일보다 이르게 태어났어요</button></div>'
-    +(ob.preterm?'<label class="f">원래 예정일 (교정연령으로 계산)</label><input type="date" id="obDue" value="'+(ob.due||"")+'"><div class="small" style="margin-top:6px">이르게 태어난 아기를 출생일로 재면 전부 「늦게」 보여요. 예정일 기준이 정확합니다.</div>':"")
+    +(ob.preterm?'<label class="f">원래 예정일 (교정연령으로 계산)</label><input type="date" id="obDue" value="'+(ob.due||"")+'" oninput="ob.due=this.value" onchange="ob.due=this.value"><div class="small" style="margin-top:6px">이르게 태어난 아기를 출생일로 재면 전부 「늦게」 보여요. 예정일 기준이 정확합니다.</div>':"")
     +'<div style="margin-top:16px"><button class="pri" onclick="obNext1()">다음</button></div></div>';
   }
   if(s===2){
@@ -1282,14 +1295,21 @@ function vFeedback(){
   +'<div class="card pop"><div class="playline"><span class="pnum">'+p.n+'</span><b style="font-size:17px">'+esc(p.name)+'</b></div>'
   +'<h3>어땠나요?</h3><div class="row" style="gap:7px">';
   [["happy","😀","재밌어했어요"],["meh","😐","그냥 그랬어요"],["sad","🙁","관심 없었어요"],["skip","⏭","못 했어요"]].forEach(([k,e,t])=>{
-    h+='<button class="emobtn '+(fb.res===k?"on":"")+'" onclick="fb.res=\''+k+'\';render()"><span class="e">'+e+'</span>'+t+'</button>'});
+    h+='<button class="emobtn '+(fb.res===k?"on":"")+'" data-k="'+k+'" aria-pressed="'+(fb.res===k)+'" onclick="fbPick(\'res\',\''+k+'\',this)"><span class="e">'+e+'</span>'+t+'</button>'});
   h+='</div><h3>그때 컨디션은? <span style="font-weight:600">(건너뛰어도 돼요)</span></h3><div>';
-  CONDS.forEach(([k,t])=>{h+='<button class="condbtn '+(fb.cond===k?"on":"")+'" onclick="fb.cond=(fb.cond===\''+k+'\'?null:\''+k+'\');render()">'+t+'</button>'});
+  CONDS.forEach(([k,t])=>{h+='<button class="condbtn '+(fb.cond===k?"on":"")+'" data-k="'+k+'" aria-pressed="'+(fb.cond===k)+'" onclick="fbPick(\'cond\',\''+k+'\',this)">'+t+'</button>'});
   h+='</div><h3>그때 모습 한 줄 <span style="font-weight:600">(안 써도 돼요)</span></h3>'
-  +'<textarea id="fbNote" placeholder="예: 왼손으로만 집었다 / 두 번째엔 스스로 천을 걷었다" style="min-height:56px"></textarea>'
+  +'<textarea id="fbNote" placeholder="예: 왼손으로만 집었다 / 두 번째엔 스스로 천을 걷었다" style="min-height:56px" oninput="fb.note=this.value">'+esc(fb.note||"")+'</textarea>'
   +'<div class="small" style="margin-top:4px">쓰면 「기록」에도 함께 남아요 — 놀이가 관찰이 되는 순간이에요.</div>'
   +'<div style="margin-top:14px"><button class="pri" onclick="fbSave()">저장</button></div></div></div>';
   return h;
+}
+/* 반응·컨디션 고르기 — 화면을 다시 그리지 않고 버튼 표시만 바꾼다.
+   예전엔 누를 때마다 화면 전체를 다시 그려서, 먼저 써 둔 «그때 모습 한 줄»이 지워졌다(2026-10-17 제보).
+   쓰는 글은 fb.note에도 담아 두어 어떤 이유로 다시 그려져도 남는다 */
+function fbPick(kind,k,btn){
+  fb[kind] = (kind==="cond" && fb.cond===k) ? null : k;
+  btn.parentNode.querySelectorAll("button[data-k]").forEach(b=>{ const on=b.dataset.k===fb[kind]; b.classList.toggle("on",on); b.setAttribute("aria-pressed",on); });
 }
 function fbSave(){
   if(!fb.res){alert("네 가지 중 하나를 골라주세요.");return}
@@ -1311,6 +1331,7 @@ function fbSave(){
     else{st.sad++;if(st.level>-1)st.level--;
       msg=st.sad>=3?"세 번 연속 관심이 없었네요. 이 놀이는 2주 쉬고 다른 영역으로 가볼게요. 아이 문제가 아니라 시기 문제일 가능성이 커요.":"알겠어요. 다음엔 쉬운 버전으로 제안할게요."}}
   else{st.skip++;msg=st.skip>=3?"3일째 못 하셨네요. 부모 시간이 문제일 수 있으니 더 짧은 놀이로 바꿔볼게요. 못 한 날은 잘못이 아니에요.":"괜찮아요. 내일 다시 제안할게요. 아무 판단도 하지 않아요."}
+  fb.note="";  /* 뒤로 가기로 이 화면에 다시 와도 같은 한 줄이 두 번 저장되지 않게 */
   save();
   $("#main").innerHTML='<div class="fade" style="text-align:center;padding-top:30px">'+mascot("happy",96)
   +'<div class="big hd" style="margin-top:10px">저장했어요!</div>'
@@ -1371,6 +1392,7 @@ function vFood(){
     +'<div class="small" style="margin:6px 0 12px">① 먹어본 음식을 체크하면 → ② 한 달 월력표가 나와요.<br>새 재료 테스트(🧪)는 3~5일 규칙에 맞춰 자동으로 끼워 넣어요.</div>'
     +'<button class="pri" onclick="go(\'foodSetup\')">'+(tried?('먹어본 음식 고르기 (지금 '+tried+'개)'):'① 먹어본 음식 고르기')+'</button>'
     +(tried? '<div style="height:8px"></div><button class="sec" onclick="buildMonth(todayStr());render()">② 📅 한 달 식단 만들기</button>':'')
+    +(Object.keys(feed.plan||{}).length? '<button class="ghost" style="width:100%;margin-top:4px" onclick="planClear()">🗑 남아 있는 식단 지우기</button>':'')
     +'</div>';
   } else {
     if(feed.calView===undefined) feed.calView="list";
@@ -1383,7 +1405,8 @@ function vFood(){
     +(feed.calView==="cal"?monthCal():monthList())+'</div>';
     if(foodCalSel){ h+=dayDetail(foodCalSel); }
     h+='<div class="row"><button class="sec" onclick="go(\'foodSetup\')">🍽 먹어본 음식 ('+tried+')</button><button class="sec" onclick="copyPlan()">📋 시트 복사</button></div>'
-    +'<div style="height:8px"></div><button class="sec" onclick="if(confirm(\'오늘부터 한 달 치를 다시 만들까요? 지난 날짜는 그대로 둬요.\')){buildMonth(todayStr());render()}">📅 한 달 다시 만들기</button>';
+    +'<div style="height:8px"></div><button class="sec" onclick="if(confirm(\'오늘부터 한 달 치를 다시 만들까요? 지난 날짜는 그대로 둬요.\')){buildMonth(todayStr());render()}">📅 한 달 다시 만들기</button>'
+    +'<button class="ghost" style="width:100%;margin-top:4px" onclick="planClear()">🗑 식단 지우기</button>';
     // 장보기
     const shopItems=weekShopping();
     if(shopItems.length){
@@ -1560,7 +1583,8 @@ function setMeals(){
   if(v===null)return;
   if(v===""){feed.mealsPerDay=null}
   else{const n=parseInt(v);if(!(n>=1&&n<=3)){alert("1~3 사이로 적어주세요.");return}feed.mealsPerDay=n}
-  buildMonth(todayStr());save();render();
+  if(planAhead()) buildMonth(todayStr());
+  save();render();
 }
 function setGoal(){
   const v=prompt("이달의 목표 (달력 맨 위에 붙어요)",feed.goal||"");
@@ -1584,7 +1608,8 @@ function stageOverride(){
     if(!k){alert("1~4 숫자로 적어주세요.");return}
     feed.stageOv=k;
   }
-  buildMonth(todayStr()); save(); render();
+  if(planAhead()) buildMonth(todayStr());
+  save(); render();
 }
 function copyPlan(){
   const rows=[["날짜","테스트","끼니"]];
@@ -1597,7 +1622,7 @@ function copyPlan(){
 }
 function vPlanDay(){
   const ds=planDay, st=curStage(), n=mealsOf(st);
-  if(!feed.plan[ds]) feed.plan[ds]={meals:[],test:null};
+  if(!feed.plan[ds]) feed.plan[ds]={meals:[],test:null,manual:1};  /* 손으로 만든 날 — 아래 «옛 형식 자동 이행»이 한 달 치를 다시 만들지 않게 */
   const P=feed.plan[ds];
   while((P.meals||[]).length<n)P.meals.push({items:[]});
   const ok=triedOK();
@@ -1681,18 +1706,19 @@ function vFoodDetail(){
   h+='</div></div>';
   return h;
 }
-function watchStart(n){feed.watch={name:n,start:todayStr()};buildMonth(todayStr());save();render()}
+function watchStart(n){feed.watch={name:n,start:todayStr()};if(planAhead())buildMonth(todayStr());save();render()}
 function watchCancel(){feed.watch=null;save();render()}
 function watchDone(r){
   const n=feed.watch.name;
   feed.tried[n]={d:feed.watch.start,r:r};feed.watch=null;
   if(r==="warn"){ feed.testPause=true; }
-  buildMonth(addDays(todayStr(),1));  /* 내일부터 월력 자동 재조정 (통과 재료 편입 / 이상 재료 제외) */
+  const hadPlan=planAhead();
+  if(hadPlan) buildMonth(addDays(todayStr(),1));  /* 내일부터 월력 자동 재조정 (통과 재료 편입 / 이상 재료 제외) — 식단이 있을 때만. 지운 식단을 되살리지 않는다 */
   save();
   if(r==="warn"){
     $("#main").innerHTML='<div class="fade" style="text-align:center;padding-top:30px">'+mascot("oh",96)
     +'<div class="big hd" style="margin-top:10px">기록해뒀어요</div>'
-    +'<div style="font-size:14.5px;margin:10px 16px;font-weight:600;text-align:left">두드러기·구토·설사·호흡 이상이 있었다면 <b>소아청소년과와 상담</b>하세요. 증상이 지금 심하면 바로 병원으로.<br><br>내일부터의 월력표에서 이 재료를 뺐고, <b>새 재료 테스트도 보류</b>해뒀어요. 의사와 상의 후 이유식 탭에서 재개하면 됩니다.<br><br>이 기록은 진료실용 요약에 들어가요.</div>'
+    +'<div style="font-size:14.5px;margin:10px 16px;font-weight:600;text-align:left">두드러기·구토·설사·호흡 이상이 있었다면 <b>소아청소년과와 상담</b>하세요. 증상이 지금 심하면 바로 병원으로.<br><br>'+(hadPlan?'내일부터의 월력표에서 이 재료를 뺐고, <b>새 재료 테스트도 보류</b>':'<b>새 재료 테스트를 보류</b>')+'해뒀어요. 의사와 상의 후 이유식 탭에서 재개하면 됩니다.<br><br>이 기록은 진료실용 요약에 들어가요.</div>'
     +'<button class="pri" onclick="go(\'food\')">확인</button></div>';navSync();header();
   } else {
     $("#main").innerHTML='<div class="fade" style="text-align:center;padding-top:30px">'+mascot("happy",96)
@@ -1704,6 +1730,9 @@ function watchDone(r){
 function retryFood(n){delete feed.tried[n];save();render()}
 
 /* ============ 기록 탭 ============ */
+/* 쓰던 글은 화면을 다시 그려도 남게 — 오늘 기록 하나를 지우거나 탭을 오가도 칸이 비지 않는다(«한 줄» 제보와 같은 원인) */
+let logDraft={i:"",o:"",n:"",d:[]};
+function lgDom(b){ b.classList.toggle("on"); logDraft.d=[...document.querySelectorAll("#lgDoms .condbtn.on")].map(x=>x.dataset.d); }
 function vLog(){
   let h='<div class="fade"><div class="row" style="margin-bottom:10px">'
   +'<button class="'+(logMode==="write"?"pri":"sec")+'" onclick="logMode=\'write\';render()">오늘 쓰기</button>'
@@ -1724,11 +1753,11 @@ function vLog(){
      +'<div class="small" style="margin-top:5px">오늘은 <b>조건 하나만 바꿔서</b> 다시 해보면, 그게 관찰이 됩니다.</div></div>';
   }
   h+='<div class="card">'
-  +'<label class="f">오늘 뭘 해줬나요?</label><textarea id="lgIn" placeholder="예: 거실 매트에 공 세 개를 놓아둠"></textarea>'
-  +'<label class="f">아이는 어떻게 했나요?</label><textarea id="lgOut" placeholder="예: 제일 큰 공만 계속 만짐"></textarea>'
-  +'<label class="f">생각나는 것 (안 써도 돼요)</label><textarea id="lgNote" placeholder="예: 크기 선호인가? 내일 순서를 바꿔봐야지"></textarea>'
+  +'<label class="f">오늘 뭘 해줬나요?</label><textarea id="lgIn" placeholder="예: 거실 매트에 공 세 개를 놓아둠" oninput="logDraft.i=this.value">'+esc(logDraft.i)+'</textarea>'
+  +'<label class="f">아이는 어떻게 했나요?</label><textarea id="lgOut" placeholder="예: 제일 큰 공만 계속 만짐" oninput="logDraft.o=this.value">'+esc(logDraft.o)+'</textarea>'
+  +'<label class="f">생각나는 것 (안 써도 돼요)</label><textarea id="lgNote" placeholder="예: 크기 선호인가? 내일 순서를 바꿔봐야지" oninput="logDraft.n=this.value">'+esc(logDraft.n)+'</textarea>'
   +'<label class="f">영역 (해당되는 것 모두)</label><div id="lgDoms">';
-  DOMS.forEach(d=>{h+='<button class="condbtn" data-d="'+d+'" onclick="this.classList.toggle(\'on\')">'+DOM_ICON[d]+' '+DOM_LABEL[d]+'</button>'});
+  DOMS.forEach(d=>{h+='<button class="condbtn'+(logDraft.d.includes(d)?' on':'')+'" data-d="'+d+'" onclick="lgDom(this)">'+DOM_ICON[d]+' '+DOM_LABEL[d]+'</button>'});
   h+='</div><div style="margin-top:12px"><button class="pri" onclick="logSave()">저장</button></div>'
   +'<div class="small" style="margin-top:10px">💡 자극 → 반응 → 생각. 이 세 칸이 이 앱의 심장이에요. 나눠 적는 순간 부모는 관찰자가 됩니다.</div></div>';
   const todays=logs.filter(l=>l.date===t);
@@ -1753,7 +1782,7 @@ function logSave(){
   const i=$("#lgIn").value.trim(),o=$("#lgOut").value.trim(),nt=$("#lgNote").value.trim();
   if(!i&&!o&&!nt){alert("한 칸이라도 적어주세요.");return}
   const doms=[...document.querySelectorAll("#lgDoms .condbtn.on")].map(b=>b.dataset.d);
-  logs.push({date:todayStr(),input:i,output:o,note:nt,doms});save();render();
+  logs.push({date:todayStr(),input:i,output:o,note:nt,doms});logDraft={i:"",o:"",n:"",d:[]};save();render();
 }
 function copyTSV(date){
   const rows=logs.filter(l=>l.date===date).map(l=>
@@ -2079,8 +2108,8 @@ function vSleep(){
      +'<div style="height:8px"></div><button class="ghost" onclick="slForm=!slForm;render()">'+(slForm?'▾ 지나간 잠 적기 닫기':'+ 지나간 잠 적기')+'</button>';
     if(slForm){
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">'
-       +'<div><label class="f" style="margin-top:0">잠든 시각</label><input type="time" id="slAddS" value="13:00"></div>'
-       +'<div><label class="f" style="margin-top:0">깬 시각</label><input type="time" id="slAddE" value="14:30"></div></div>'
+       +'<div><label class="f" style="margin-top:0">잠든 시각</label><input type="time" id="slAddS" value="'+esc(slAddV.s)+'" oninput="slAddV.s=this.value" onchange="slAddV.s=this.value"></div>'
+       +'<div><label class="f" style="margin-top:0">깬 시각</label><input type="time" id="slAddE" value="'+esc(slAddV.e)+'" oninput="slAddV.e=this.value" onchange="slAddV.e=this.value"></div></div>'
        +'<div style="margin:8px 0"><button class="condbtn '+(slAddN?'on':'')+'" style="margin:0 6px 0 0" onclick="slAddN=1;render()">🌤 낮잠</button>'
        +'<button class="condbtn '+(!slAddN?'on':'')+'" style="margin:0" onclick="slAddN=0;render()">🌙 밤잠</button>'
        +'<span class="small" style="margin-left:8px">'+(sleepDay||todayStr())+' 기록 · 자정을 넘겨도 그대로</span></div>'
@@ -2158,7 +2187,7 @@ function vSleep(){
 }
 function nowHM(){ const d=new Date(); return m2hm(d.getHours()*60+d.getMinutes()); }
 /* 베이비타임처럼: 누르는 순간 시작. 시각 교정은 화면 안에서, 막는 창 없이. */
-let slForm=false, slAddN=1;
+let slForm=false, slAddN=1, slAddV={s:"13:00",e:"14:30"};  /* 적던 시각 — 낮잠/밤잠을 바꿔 눌러도 그대로 */
 function sleepStart(n){
   if(sleeps.find(x=>x.on)){alert("이미 자는 중으로 기록돼 있어요. 먼저 «깼어요»를 눌러주세요.");return}
   sleeps.push({d:todayStr(),s:nowHM(),e:"",n:n?1:0,on:1});
@@ -2176,7 +2205,7 @@ function slAddSave(){
   const S=$("#slAddS").value, E=$("#slAddE").value;
   if(!S||!E){alert("두 시각을 모두 골라주세요.");return}
   sleeps.push({d:sleepDay||todayStr(),s:S,e:E,n:slAddN?1:0});
-  slForm=false; save(); render();
+  slForm=false; slAddV={s:"13:00",e:"14:30"}; save(); render();
 }
 /* 잘못 눌렀을 때 되돌리기 */
 function sleepCancel(){
@@ -2335,7 +2364,7 @@ function dayDigest(ds){
   }
   /* 이유식 */
   const p=feed.plan[ds];
-  if(p&&p.meals&&p.meals.length){
+  if(p&&p.meals&&p.meals.some(m=>m.items&&m.items.length)){
     L.push("🍚 이유식"+(feed.style==="bowl"?" (죽)":" (토핑)"));
     p.meals.forEach((m,i)=>{ const it=(m.items||[]); if(it.length)L.push("  "+(i+1)+"끼: "+it.join(feed.style==="bowl"?" + ":" · ")); });
     if(p.testItem)L.push("  🧪 새 재료: "+p.testItem+" — 두드러기·구토·설사 있는지 봐주세요");
@@ -3177,7 +3206,7 @@ function render(){
 (function(){
   if(!child) return;
   const p=feed.plan&&feed.plan[todayStr()];
-  if(p && p.stock===undefined && curStage().k!=="pre"){ buildMonth(todayStr()); render(); }
+  if(p && p.stock===undefined && !p.manual && curStage().k!=="pre"){ buildMonth(todayStr()); render(); }
 })();
 applyBig();
 (function(){ try{ const raw=localStorage.getItem("siwoo.prefill"); if(!raw) return; localStorage.removeItem("siwoo.prefill");
