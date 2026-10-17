@@ -437,6 +437,44 @@ try {
   await ctx.close();
 } catch(e) { bad('이유식 식단 지우기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
+/* 2-5f. 추천이 같은 놀이를 되풀이하지 않나 — 2026-10-17 제보 «매번 같은 놀이». 영역별 풀을 한 바퀴 돌기 전에는 같은 놀이가 다시 나오면 안 된다.
+   날짜를 하루씩 밀어 가며 9개월 아이의 추천을 10일치 뽑는다. 쉬기로 한 놀이(관심 없음 3회)는 2주 동안 빠져야 한다 */
+try {
+  const {ctx,page,errs} = await fresh();
+  page.setDefaultTimeout(4000);
+  const r = await page.evaluate(()=>{
+    const real=todayStr; const base=real();
+    const days=[]; for(let i=0;i<10;i++) days.push(addDays(base,i));
+    const byDom={}; const seq=[];
+    const cur=playsAt(Math.min(monthAge(),MAX_PLAY_M)); const start=Math.min.apply(null,cur.map(p=>p.m));
+    const pool=PLAYS.filter(p=>(p.m<=monthAge()&&monthAge()<=pEnd(p))||(start>0&&p.m<=start-1&&start-1<=pEnd(p)));
+    /* 첫날 추천 중 하나를 «세 번 관심 없음»으로 쉬게 한다 — 그 영역의 풀은 하나 줄어든다 */
+    sugCache={}; playLogs=[]; playState={};
+    const first=suggestToday(); const restN=first[0]; const restDom=(PLAYS.find(p=>p.n===restN)||{}).dom;
+    playState[restN]={level:0,sad:0,skip:0,happy:0,rest:base,restDays:14};
+    DOMS.forEach(d=>byDom[d]=pool.filter(p=>p.dom===d&&p.n!==restN).length);
+    sugCache={};
+    for(const d of days){ todayStr=()=>d; seq.push(suggestToday()); }
+    todayStr=real;
+    return {byDom, seq, restN};
+  });
+  const probs=[];
+  if (!r.seq.every(l=>l.length===4)) probs.push('영역별 4개가 아님: '+JSON.stringify(r.seq.map(l=>l.length)));
+  /* 영역별로: 풀 크기 k만큼의 연속 추천 안에 중복이 없어야 한다 */
+  const DOMS=['인지','신체','사회정서','언어'];
+  r.seq[0].forEach((_,col)=>{
+    const picks=r.seq.map(l=>l[col]);
+    /* 각 열이 어느 영역인지는 놀이 번호로 알아낸다 */
+    const dom=(PLAYS.find(p=>p.n===picks[0])||{}).dom; const k=Math.min(r.byDom[dom]||1, picks.length);
+    const win=picks.slice(0,k); const dup=win.length-new Set(win).size;
+    if (dup) probs.push(dom+' 영역 '+k+'일 안에 중복 '+dup+'건: '+win.join(','));
+  });
+  if (r.seq.some(l=>l.includes(r.restN))) probs.push('쉬기로 한 놀이 #'+r.restN+'가 2주 안에 다시 추천됨');
+  (probs.length||errs.length) ? bad('추천이 같은 놀이를 되풀이함', probs.concat(errs.slice(0,2)).join(' / '))
+    : ok('추천 순환 — 9개월 아이 10일치, 영역별 풀('+DOMS.map(d=>r.byDom[d]).join('·')+'개)을 다 돌기 전엔 중복 없음 · 쉬는 놀이 제외');
+  await ctx.close();
+} catch(e) { bad('추천이 같은 놀이를 되풀이함', '검사 중단: '+String(e.message).split('\n')[0]); }
+
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
   const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
