@@ -85,7 +85,7 @@ if (PLAYS && PARTNER) {
       const NOT_GOODS = /반려동물|계단|아빠 다리|열린 문|창가|유아차|^없음|^집에|부모|목소리| 또는 |이나 /;
       const deadAlias = Object.entries(f.SHOP_ALIAS).filter(([a,t])=>f.SHOP_NONE.includes(t) || NOT_GOODS.test(t));
       let np=0, ns=0, nn=0; const silly=[], search=new Set();
-      for (const p of PLAYS) { const k = f.matKeyword(p.mat);
+      for (const p of PLAYS) { const k = f.matKeyword(p.mat, p.shop);
         if (!k) { nn++; continue; }
         if (PARTNER[k]) np++; else { ns++; search.add(k); }
         if (!PARTNER[k] && NOT_GOODS.test(k)) silly.push('#'+p.n+' «'+k+'»'); }
