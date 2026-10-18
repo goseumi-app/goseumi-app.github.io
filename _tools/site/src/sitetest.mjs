@@ -47,13 +47,17 @@ for(const [ua,exp] of [[UA.safariI,'아이폰'],[UA.chromeA,'안드로이드']])
   await p.fill('#demo-birth',b20); await p.click('#demo-form button[type=submit]'); await p.waitForSelector('.dplay');
   const r=await p.evaluate(()=>({n:document.querySelectorAll('.dplay').length, href:document.querySelector('.demo-cta a.btn-sec').getAttribute('href'), txt:document.querySelector('.demo-cta a.btn-sec').textContent}));
   (r.n===4&&r.href==='/play/18.html'&&r.txt.includes('18~23개월'))?ok('20개월 미리 보기 — 네 영역 · «생후 18~23개월 놀이 전부 보기»'):bad('20개월 미리 보기',JSON.stringify(r));
+  /* 구간의 놀이 수는 데이터(plays.json)에서 센다 — 놀이가 늘어도 검사가 따라간다 */
+  const pj=await (await p.request.get(B+'/assets/plays.json')).json(); const n18=pj.plays.filter(x=>x.m===18).length;
   await p.goto(B+'/play/18.html'); const q=await p.evaluate(()=>({h1:document.querySelector('h1').textContent, n:document.querySelectorAll('article.play').length, lead:document.querySelector('.lead').textContent}));
-  (q.h1.includes('18~23개월')&&q.n===12&&q.lead.includes('20개월'))?ok('구간 페이지 /play/18.html — «'+q.h1+'»'):bad('구간 페이지',JSON.stringify(q)); await ctx.close(); }
+  (q.h1.includes('18~23개월')&&q.n===n18&&q.h1.includes(n18+'가지')&&q.lead.includes('20개월'))?ok('구간 페이지 /play/18.html — «'+q.h1+'»'):bad('구간 페이지',JSON.stringify(q)); await ctx.close(); }
 // 5) 미래 날짜·9개월 이상
 { const {ctx,p}=await pg(UA.chromeA); await p.goto(B+'/');
   await p.evaluate(()=>{const i=document.querySelector('#demo-birth'); i.removeAttribute('max'); i.value='2099-01-01'; document.querySelector('#demo-form').requestSubmit();}); await p.waitForTimeout(200);
   const f=await p.evaluate(()=>document.getElementById('demo-out').innerText); f.includes('아직 오지 않은 날짜')?ok('미래 날짜 안내'):bad('미래 날짜',f);
-  await p.fill('#demo-birth','2021-01-01'); await p.click('#demo-form button[type=submit]'); await p.waitForSelector('.dplay');
+  /* 놀이가 있는 최대 월령보다 반년 큰 아이 — 놀이가 늘어도 검사가 따라간다 */
+  const mx=(await (await p.request.get(B+'/assets/plays.json')).json()).maxM; const bd=new Date(); bd.setMonth(bd.getMonth()-(mx+6)); const big=bd.toISOString().slice(0,10);
+  await p.fill('#demo-birth',big); await p.click('#demo-form button[type=submit]'); await p.waitForSelector('.dplay');
   const g=await p.evaluate(()=>document.getElementById('demo-out').innerText); g.includes('까지') && g.includes('있어요')?ok('놀이보다 큰 아이 — 한계를 밝힘'):bad('큰 아이 안내',g.slice(0,80)); await ctx.close(); }
 // 6) PC — QR 보임, 붙박이 권유 안 보임 / 모바일 — 스크롤하면 붙박이 권유
 { const {ctx,p}=await pg(undefined,{width:1440,height:900}); await p.goto(B+'/'); await p.waitForTimeout(300);

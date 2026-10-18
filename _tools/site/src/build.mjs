@@ -63,7 +63,9 @@ function mascot(mood='happy',cls='mascot'){
 /* 주의 문구 — 관찰 원문(D번호·기록 속 아기·이 집 기록)이 든 것은 src/warn_web.json의 홈페이지용 문구로 바꾼다.
    원문의 자리는 책 원고다. 새 놀이에 원문이 들어오면 조용히 넘기지 않고 빌드를 멈춘다 */
 const WARN_WEB=JSON.parse(fs.readFileSync(path.join(SRC,'warn_web.json'),'utf8'));
-const OBS=/D\d{1,3}(?!\d)|기록 속 아기|이 집 기록|기록에는|기록에도|선생님/;
+/* «선생님»은 관찰 기록의 높임 서술(«선생님이 …라 적으셨습니다»)만 막는다. 2026-10-18 CDC 놀이에 들어온
+   역할 이름(«오늘은 네가 선생님», CDC 48개월 이정표 «선생님, 슈퍼히어로, 개»)은 원문이 아니라 통과시킨다. */
+const OBS=/D\d{1,3}(?!\d)|기록 속 아기|이 집 기록|기록에는|기록에도|선생님(?:이|은|께서)[^.]{0,60}(?:셨|시고|시며)/;
 function webWarn(p){
   if(WARN_WEB[p.n]) return WARN_WEB[p.n];
   if(p.warn&&OBS.test(p.warn)) throw new Error(`놀이 #${p.n} «${p.name}» 주의 문구에 관찰 원문이 있어요 — src/warn_web.json에 홈페이지용 문구를 적어 주세요`);
@@ -76,7 +78,7 @@ for(const p of PLAYS){ for(const f of ['name','mat','how','down','up','label']) 
 const SHOP_SRC=(js.match(/\/\* SHOP-KEYWORD-BEGIN[^*]*\*\/([\s\S]*?)\/\* SHOP-KEYWORD-END \*\//)||[])[1];
 const matKeyword=SHOP_SRC? new Function(SHOP_SRC+'\nreturn matKeyword;')()
   : function(mat){ const m=(mat||'').split(/[,(·]/)[0].trim(); if(!m||m==='없음'||m.startsWith('아무')||m.startsWith('부모')) return null; return m.replace(/^아기\s*/,'아기 '); };
-const buyLink=mat=>{ const k=matKeyword(mat); return k&&PARTNER[k]?{k,url:PARTNER[k]}:null; };
+const buyLink=p=>{ const k=matKeyword(p.mat,p.shop); return k&&PARTNER[k]?{k,url:PARTNER[k]}:null; };
 const AD_NOTE='이 게시물은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.';
 /* 놀이별 «장난감 예시» — 앱의 TOY-REC 구간을 그대로 읽는다 (앱 카드의 «🧸 이 놀이에 쓸 수 있는 장난감»과 같은 내용).
    옛 판 앱에는 그 구간이 없으니 그때는 장난감 칸 없이 */
@@ -146,7 +148,7 @@ const shot=(n,alt,cls='',pri=false)=>`<div class="phone ${cls}"><picture><source
 const byM={}; PLAYS.forEach(p=>{(byM[p.m]=byM[p.m]||[]).push(p)});
 const months=Object.keys(byM).map(Number).sort((a,b)=>a-b);
 function playArticle(p){
-  const buy=buyLink(p.mat), w=webWarn(p), me=p.mathEye, toys=toysOf(p);
+  const buy=buyLink(p), w=webWarn(p), me=p.mathEye, toys=toysOf(p);
   return `<article class="play" id="p${p.n}">
 <div class="meta-line" style="margin:0"><span class="tag t-${p.dom}">${DOM_LABEL[p.dom]}</span>${p.dom2?`<span class="tag t-${p.dom2}">${DOM_LABEL[p.dom2]}</span>`:''}<span class="tag t-src">${p.ref?'연구 기반':'실제 기록에서'}</span></div>
 <h3>${esc(p.name)}</h3>
@@ -172,7 +174,7 @@ for(const m of months){
   const pRec=L.filter(p=>p.src&&p.src.length).length, pRef=L.filter(p=>p.ref).length;
   const names=L.slice(0,3).map(p=>p.name).join(', ');
   const desc=`${mName(m)} 아기와 집에서 해볼 발달 놀이 ${n}가지 — ${names} 등. 준비물·방법·쉽게/어렵게 하는 법까지 한 번에. 시기는 미국 CDC·WHO 이정표 기준.`;
-  const hasAd=L.some(p=>buyLink(p.mat)||toysOf(p).length);
+  const hasAd=L.some(p=>buyLink(p)||toysOf(p).length);
   const doms=DOMS.map(d=>[d,L.filter(p=>p.dom===d)]).filter(([,x])=>x.length);
   const mi=months.indexOf(m), prev=mi>0?months[mi-1]:null, next=mi<months.length-1?months[mi+1]:null;
   const ld=[ldCrumbs([['고슴이','/'],['개월수별 놀이','/play/'],[mName(m),`/play/${m}.html`]]),
