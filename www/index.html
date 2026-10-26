@@ -2336,7 +2336,8 @@ function setSex(s){ child.sex=s; save(); render(); }
 
 
 /* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝 */
-const WHATS_NEW={v:"v29",items:[
+const WHATS_NEW={v:"v30",items:[
+ ["📤 하루 요약에 쓴 글이 다 들어가요","요약이 기록을 80자에서 자르던 것을 고쳤어요. «오늘 뭘 해줬나요»와 «생각나는 것» 칸도 함께 들어가고, 놀이 한 줄에는 어느 놀이였는지 붙어요. 지난 날짜는 달력에서 다시 보내면 온전한 글로 나와요.",""],
  ["🧸 만 6세 전까지 놀이 426개","9~35개월은 구간마다 영역별 놀이가 3개에서 8개로 늘었고, 36~71개월(만 3~5세) 구간 6개가 새로 생겼어요. 모두 미국 CDC 공식 이정표·활동 팁이 출처예요.","plays"],
  ["🔁 같은 놀이 덜 반복","«오늘 해볼 놀이»는 가장 오래 안 본 놀이부터 골라요. 구간의 놀이를 한 바퀴 다 돌기 전에는 같은 놀이가 다시 나오지 않아요.",""],
  ["📐 수학의 눈 91개 추가","수 세기·크기 견주기·위치 말·규칙 무늬·분류처럼 수학의 뿌리가 보이는 새 놀이에만 붙였어요.","plays"]]};
@@ -2402,11 +2403,22 @@ function dayDigest(ds){
     p.meals.forEach((m,i)=>{ const it=(m.items||[]); if(it.length)L.push("  "+(i+1)+"끼: "+it.join(feed.style==="bowl"?" + ":" · ")); });
     if(p.testItem)L.push("  🧪 새 재료: "+p.testItem+" — 두드러기·구토·설사 있는지 봐주세요");
   }
-  /* 관찰 기록 */
+  /* 관찰 기록 — 쓴 글은 자르지도 빼지도 않는다.
+     예전엔 «반응(없으면 자극)» 한 칸만 80자에서 말없이 잘라 넣어, 시트·Gemini에 붙인 글이 문장 중간에서 끊겼고
+     자극·생각 칸은 빠졌다(2026-10-26 제보). 이제 자극 → 반응, 그 아래 💭 생각까지 쓴 그대로 넣는다.
+     놀이 «한 줄»(자극 칸이 «놀이 N · 이름»)은 어느 놀이의 메모인지 🧸 이름을 붙인다. 여러 줄 글은 들여쓰기를 잇는다 */
   const lg=logs.filter(x=>x.date===ds);
-  if(lg.length){
+  const ind=v=>String(v||"").trim().replace(/[ \t]*\n\s*/g,"\n    ");
+  const obs=[];
+  lg.forEach(x=>{
+    const i=ind(x.input), o=ind(x.output), nt=ind(x.note);
+    const pm=i.match(/^놀이 \d+ · ([\s\S]+)$/);
+    const head = pm ? "🧸 "+pm[1]+(o?" → "+o:"") : (i&&o ? i+" → "+o : (o||i));
+    if(head||nt) obs.push("  · "+(head? head+(nt?"\n    💭 "+nt:"") : "💭 "+nt));
+  });
+  if(obs.length){
     L.push(ds===todayStr()?"✏️ 오늘 본 것":"✏️ 이날 본 것");
-    lg.forEach(x=>{ const t=(x.output||x.input||"").trim(); if(t)L.push("  · "+t.slice(0,80)); });
+    obs.forEach(t=>L.push(t));
   }
   /* 놀이 */
   const pl=playLogs.filter(x=>x.date===ds);
