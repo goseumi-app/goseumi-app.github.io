@@ -475,6 +475,39 @@ try {
   await ctx.close();
 } catch(e) { bad('추천이 같은 놀이를 되풀이함', '검사 중단: '+String(e.message).split('\n')[0]); }
 
+/* 2-5g. 하루 요약은 쓴 글을 자르지도 빼지도 않는다 — 2026-10-26 제보: 시트·Gemini에 붙이려고 보낸 요약에서 기록이 문장 중간에 끊겼다.
+   요약이 관찰 기록을 «반응(없으면 자극)» 한 칸만, 80자에서 말없이 잘라 넣고 있었다. 자극·생각 칸은 빠졌고, 생각만 적은 기록은 통째로 빠졌다.
+   (공개 저장소라 실제 기록 대신 지어낸 문장으로 검사한다) */
+try {
+  const {ctx,page,errs} = await fresh();
+  page.setDefaultTimeout(4000);
+  const r = await page.evaluate(()=>{
+    const y=addDays(todayStr(),-1);
+    const long='블록을 통에 넣었다가 다시 꺼내기를 여러 번 했다. 통을 흔들어 소리를 듣고 웃었고, 뚜껑을 덮으려고 손바닥으로 몇 번이나 눌렀다. 마지막에는 통을 엎어서 블록을 전부 쏟았다.';
+    const p=PLAYS.find(x=>x.m<=9&&9<=pEnd(x));
+    logs=[
+      {date:y,input:'',output:long,note:'',doms:[]},
+      {date:y,input:'워커를 밀어 주며 걷게 함',output:'방향은 아직 못 잡지만 다섯 걸음',note:'다음엔 장난감을 앞에 둬 볼까',doms:[]},
+      {date:y,input:'',output:'',note:'생각만 적은 기록',doms:[]},
+      {date:y,input:'놀이 '+p.n+' · '+p.name,output:'한 줄 메모\n둘째 줄',note:'',doms:[]}];
+    playLogs=[{date:y,n:p.n,res:'happy'}];
+    return {d:dayDigest(y), name:p.name, len:long.length};
+  });
+  const d=r.d, probs=[];
+  if (r.len<=80) probs.push('검사 문장이 80자 이하 — 검사가 의미 없음');
+  /* ① 80자를 넘는 글이 끝까지 들어간다 */
+  if (!d.includes('블록을 전부 쏟았다.')) probs.push('긴 글이 잘림');
+  /* ② 자극 → 반응, 생각까지 세 칸이 다 들어간다 */
+  if (!(d.includes('워커를 밀어 주며 걷게 함 → 방향은 아직 못 잡지만 다섯 걸음') && d.includes('다음엔 장난감을 앞에 둬 볼까'))) probs.push('자극 또는 생각 칸이 빠짐');
+  /* ③ 생각만 적은 기록도 빠지지 않는다 */
+  if (!d.includes('생각만 적은 기록')) probs.push('생각만 적은 기록이 빠짐');
+  /* 놀이 «한 줄»에는 어느 놀이였는지 붙고, 여러 줄 글은 들여쓰기가 이어진다 */
+  if (!d.includes('🧸 '+r.name+' → 한 줄 메모\n    둘째 줄')) probs.push('놀이 한 줄에 놀이 이름이 없거나 둘째 줄 들여쓰기가 깨짐');
+  (probs.length||errs.length) ? bad('하루 요약이 쓴 글을 자르거나 뺌', probs.concat(errs.slice(0,2)).join(' / '))
+    : ok('하루 요약 — 80자 넘는 글도 끝까지, 자극→반응→생각 세 칸, 생각만 적은 기록, 놀이 한 줄의 놀이 이름까지 다 들어감');
+  await ctx.close();
+} catch(e) { bad('하루 요약이 쓴 글을 자르거나 뺌', '검사 중단: '+String(e.message).split('\n')[0]); }
+
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
   const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
