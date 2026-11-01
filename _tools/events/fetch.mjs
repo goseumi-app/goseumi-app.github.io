@@ -22,7 +22,8 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.start
 const OUT = args.out || 'assets/events.json';
 const DAYS = Number(args.days || 60);
 const CAP = Number(args.cap || 1500);
-const KEYS = { seoul: process.env.SEOUL_KEY || '', data: process.env.DATA_GO_KR_KEY || '', kopis: process.env.KOPIS_KEY || '' };
+/* 깃허브 Secrets에 붙여넣을 때 앞뒤 빈칸·줄바꿈이 딸려 들어가도 열쇠가 깨지지 않게 다듬는다 */
+const KEYS = { seoul: (process.env.SEOUL_KEY || '').trim(), data: (process.env.DATA_GO_KR_KEY || '').trim(), kopis: (process.env.KOPIS_KEY || '').trim() };
 
 /* ───────── 날짜 ───────── */
 const KST = 9 * 60 * 60 * 1000;
