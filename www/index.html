@@ -2462,7 +2462,7 @@ const EV_URL="https://goseumi-app.github.io/assets/events.json";
 const EV_SIDO=["서울","경기","인천","부산","대구","광주","대전","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"];
 const EV_SRC={seoul:"서울시 문화행사 정보",data_event:"공공데이터포털 공연행사",data_fest:"공공데이터포털 문화축제",kopis:"KOPIS 공연예술통합전산망"};
 let evData=store.get("evData",null), evPref=store.get("evPref",{on:true,regions:null,span:"wk",free:false,age:true,at:0});
-let evBusy=false, evErr="", evLastTry=0;
+let evBusy=false, evErr="", evLastTry=0, evMore=false;
 function evValid(e){
   return e && typeof e.title==="string" && e.title.length && /^\d{4}-\d{2}-\d{2}$/.test(e.start||"") && /^\d{4}-\d{2}-\d{2}$/.test(e.end||"")
     && (e.url==null || /^https?:\/\//.test(e.url)) && (e.img==null || /^https?:\/\//.test(e.img))
@@ -2509,9 +2509,10 @@ function evList(span){
     if(evPref.age && e.ageMax!=null && e.ageMax<m) return false;
     return true;
   });
-  /* 그 주말에 «열리는» 짧은 행사가 먼저, 몇 달 내내 하는 전시는 뒤로 */
+  /* 아이 맞춤 행사가 먼저(자료의 kid: 3 나이를 콕 집음 · 2 이름에 아이·가족 · 1 누구나 · 0 모름), 그 안에서는
+     그 주말에 «열리는» 짧은 행사가 먼저, 몇 달 내내 하는 전시는 뒤로 */
   const dur=e=>daysBetween(e.start,e.end);
-  return L.sort((a,b)=>{ const la=dur(a)>14?1:0, lb=dur(b)>14?1:0; if(la!==lb) return la-lb; return a.start<b.start?-1:a.start>b.start?1:0; });
+  return L.sort((a,b)=>{ const ka=a.kid||0, kb=b.kid||0; if(ka!==kb) return kb-ka; const la=dur(a)>14?1:0, lb=dur(b)>14?1:0; if(la!==lb) return la-lb; return a.start<b.start?-1:a.start>b.start?1:0; });
 }
 function evFmtD(ds){ const d=new Date(ds+"T00:00:00"); return (d.getMonth()+1)+"/"+d.getDate()+"("+"일월화수목금토"[d.getDay()]+")"; }
 function evWhen(e){ return e.start===e.end?evFmtD(e.start):evFmtD(e.start)+" ~ "+evFmtD(e.end); }
@@ -2601,13 +2602,17 @@ function vEvents(){
   /* 목록 파일은 받았는데 비어 있음 = 자동 작업이 아직 자료를 모으지 않음. «조건에 맞는 게 없다»고 하면 기간·지역을 바꿔 봐도 소용없어 헷갈린다 */
   if(!evData.events.length){ h+='<div class="card"><div class="small">행사 목록을 준비하고 있어요. 준비되면 여기에 바로 보여요.</div></div>'; return h+evFoot(); }
   const L=evList();
-  h+='<div class="small" style="margin-bottom:8px"><b>'+L.length+'개</b> · '+esc(regs.length?regs.join("·"):"전국")+(evPref.age?' · 생후 '+monthAge()+'개월 기준':'')+'</div>';
+  /* 아이 맞춤(kid 2·3)을 먼저 보여 주고, «누구나» 전시·공연은 단추 하나 뒤에 접어 둔다 — 첫 자료에서 일반 미술 전시가 백 개 넘게 섞였다 */
+  const top=L.filter(e=>(e.kid||0)>=2), rest=L.filter(e=>(e.kid||0)<2), fold=top.length>0 && rest.length>0;
+  h+='<div class="small" style="margin-bottom:8px">'+(fold?'아이 맞춤 <b>'+top.length+'개</b> · 누구나 '+rest.length+'개':'<b>'+L.length+'개</b>')+' · '+esc(regs.length?regs.join("·"):"전국")+(evPref.age?' · 생후 '+monthAge()+'개월 기준':'')+'</div>';
   if(!L.length){
     h+='<div class="card"><div class="small">이 조건에 맞는 행사가 없어요. 기간을 늘리거나 지역을 더 골라 보세요.</div></div>';
   } else {
     h+='<button class="sec" style="margin-bottom:8px" onclick="evShareAll()">📤 목록 보내기</button>';
-    L.slice(0,80).forEach(e=>{ h+=evItem(e); });
-    if(L.length>80) h+='<div class="small" style="text-align:center">80개까지만 보여요. 기간이나 지역을 좁혀 보세요.</div>';
+    const show=fold&&!evMore?top:L;
+    show.slice(0,80).forEach(e=>{ h+=evItem(e); });
+    if(fold) h+='<button class="ghost" style="width:100%;margin-bottom:8px" onclick="evMore=!evMore;render()" aria-expanded="'+(evMore?'true':'false')+'">'+(evMore?'누구나 갈 수 있는 전시·공연 접기':'누구나 갈 수 있는 전시·공연 '+rest.length+'개 더 보기')+'</button>';
+    if(show.length>80) h+='<div class="small" style="text-align:center">80개까지만 보여요. 기간이나 지역을 좁혀 보세요.</div>';
   }
   return h+evFoot(L.length>0);
 }
