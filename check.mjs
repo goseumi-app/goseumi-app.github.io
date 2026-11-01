@@ -210,6 +210,7 @@ async function fresh(opts={}) {
         if (e.ageMax != null && typeof e.ageMax !== 'number') probs.push(tag + ' 연령 상한 꼴');
         if (e.sido != null && !SIDO.includes(e.sido)) probs.push(tag + ' 시도 이름 ' + e.sido);
         if (!['seoul','data_event','data_fest','kopis'].includes(e.src)) probs.push(tag + ' 출처 ' + e.src);
+        if (e.kid != null && ![0, 1, 2, 3].includes(e.kid)) probs.push(tag + ' 아이 맞춤 점수 ' + e.kid);
       });
       if (JSON.stringify(d).length > 3_000_000) probs.push('파일이 3MB를 넘음');
       probs.length ? bad('행사 목록 파일', probs.length + '건: ' + probs.slice(0, 4).join(' / '))
@@ -592,8 +593,23 @@ try {
   if (!r.segShown) probs.push('놀이 탭 위에 «주말 나들이» 전환이 없음 (설정까지 가야 찾던 문제)');
   if (!r.segGoes) probs.push('«주말 나들이»를 눌러도 행사 화면으로 안 감');
   if (!r.plainText) probs.push('행사 화면 글에 «» 꺾쇠가 남음 (짧고 평범한 말로)');
+  /* 아이 맞춤(kid 2·3)이 먼저, «누구나»·모름(kid 0·1)은 «더 보기» 뒤에 접힌다 — 첫 서울 자료에 일반 미술 전시가 백 개 넘게 섞였던 것 */
+  const fold = await page.evaluate(() => {
+    evData.events.forEach(e => { e.kid = e.id === 'a' ? 3 : (e.id === 'f' ? 0 : 1); });
+    evPref.regions = ['인천']; evPref.span = 'wk'; evPref.age = true; evPref.free = false; evSavePref(); evMore = false;
+    const order = evList('wk').map(e => e.id).join('');
+    go('events'); const t1 = document.querySelector('main').innerText;
+    const btn = [...document.querySelectorAll('main button')].find(b => /더 보기/.test(b.textContent) && /누구나/.test(b.textContent));
+    if (btn) btn.click(); const t2 = document.querySelector('main').innerText;
+    go('home'); const home = document.querySelector('main').innerText;
+    return { order, aShown: /예시 인천 전연령 주말 행사/.test(t1), fHidden: !/예시 인천 연령 표기 없음 주말 행사/.test(t1), hasBtn: !!btn,
+      fShown: /예시 인천 연령 표기 없음 주말 행사/.test(t2), homeFirst: /이번 주말 어디 갈까[^]*?예시 인천 전연령 주말 행사/.test(home) };
+  });
+  if (fold.order !== 'af') probs.push('아이 맞춤 순서 ' + JSON.stringify(fold.order) + ' (기대 af)');
+  if (!fold.aShown || !fold.fHidden || !fold.hasBtn || !fold.fShown) probs.push('누구나 접기 이상 ' + JSON.stringify(fold));
+  if (!fold.homeFirst) probs.push('홈 카드에 아이 맞춤 행사가 먼저 안 나옴');
   (probs.length || errs.length) ? bad('«이번 주말 어디 갈까» 거르기 이상', probs.concat(errs.slice(0,2)).join(' / '))
-    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 오류 0');
+    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 아이 맞춤 먼저·누구나는 접기, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 오류 0');
   await ctx.close();
 } catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
