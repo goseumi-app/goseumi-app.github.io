@@ -574,7 +574,12 @@ try {
     evPref.free = true; const free = names(evList('wk')); evPref.free = false;
     go('home'); const home = document.querySelector('main').innerText;
     go('events'); const evs = document.querySelector('main').innerText;
-    return { wk, wkNoAge, m1, free, homeCard: /이번 주말 어디 갈까[\s\S]*예시 인천 전연령 주말 행사/.test(home), listShown: /예시 인천 전연령 주말 행사/.test(evs) && !/예시 서울 전연령/.test(evs), hasShare: /이 목록 보내기/.test(evs) };
+    const navOn = !!document.querySelector('nav.bottom button[data-v="plays"].on');      /* 행사 화면은 놀이 탭 안에 있다 */
+    go('plays'); const pl = document.querySelector('main').innerText;
+    const seg = [...document.querySelectorAll('main .segsw button')].find(b => /주말 나들이/.test(b.textContent));
+    if (seg) seg.click(); const segGoes = view === 'events';
+    return { wk, wkNoAge, m1, free, homeCard: /이번 주말 어디 갈까[\s\S]*예시 인천 전연령 주말 행사/.test(home), listShown: /예시 인천 전연령 주말 행사/.test(evs) && !/예시 서울 전연령/.test(evs), hasShare: /목록 보내기/.test(evs),
+      navOn, segShown: !!seg && /주말 나들이/.test(pl), segGoes, plainText: !/[«»]/.test(evs) };
   });
   if (r.wk !== 'af') probs.push('주말·인천·10개월 거르기 ' + JSON.stringify(r.wk) + ' (기대 af)');
   if (r.wkNoAge !== 'abf') probs.push('나이 거르기 끄면 ' + JSON.stringify(r.wkNoAge) + ' (기대 abf)');
@@ -583,8 +588,12 @@ try {
   if (!r.homeCard) probs.push('홈 카드에 주말 행사가 안 보임');
   if (!r.listShown) probs.push('행사 화면 목록이 조건대로 안 나옴');
   if (!r.hasShare) probs.push('공유 단추 없음');
+  if (!r.navOn) probs.push('행사 화면에서 아래 «놀이» 탭이 켜지지 않음');
+  if (!r.segShown) probs.push('놀이 탭 위에 «주말 나들이» 전환이 없음 (설정까지 가야 찾던 문제)');
+  if (!r.segGoes) probs.push('«주말 나들이»를 눌러도 행사 화면으로 안 감');
+  if (!r.plainText) probs.push('행사 화면 글에 «» 꺾쇠가 남음 (짧고 평범한 말로)');
   (probs.length || errs.length) ? bad('«이번 주말 어디 갈까» 거르기 이상', probs.concat(errs.slice(0,2)).join(' / '))
-    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 목록 없을 땐 홈 카드 없음, 오류 0');
+    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 오류 0');
   await ctx.close();
 } catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
