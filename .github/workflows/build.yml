@@ -62,19 +62,42 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: 위치 권한 선언 (달빛어린이병원 «가까운 순» — 웹뷰가 위치를 물으려면 필요)
+      - name: 위치 권한 선언 — 대략적 위치만 (달빛어린이병원 «가까운 순» — 웹뷰가 위치를 물으려면 필요)
+        # 앱은 getCurrentPosition을 enableHighAccuracy:false 로만 부르므로 정밀 위치(ACCESS_FINE_LOCATION)는 필요 없다.
+        # Play 위치 권한 정책(2027-01-27 의무화): 꼭 필요한 최소 범위만 — 정밀 위치를 선언하면 «대략적 위치로는 왜 안 되는지»
+        # 콘솔 신고가 필요하고, Android 17(API 37+) 타겟부터는 위치 버튼도 의무가 된다. 대략적 위치만 선언하면 둘 다 해당 없음.
+        # (2026-11-01 변경 — 그전에는 두 권한을 모두 선언했다)
         run: |
           python3 - <<'PY'
-          import io
+          import io, re
           p='android/app/src/main/AndroidManifest.xml'
           s=io.open(p).read()
-          perms='    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
+          s=re.sub(r'[ \t]*<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\s*/>\n?', '', s)
+          perm='    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
           if 'ACCESS_COARSE_LOCATION' not in s:
               a='<uses-permission android:name="android.permission.INTERNET" />'
-              if a in s: s=s.replace(a, a+'\n'+perms.rstrip('\n'))
-              else: s=s.replace('</manifest>', perms+'</manifest>')
-              io.open(p,'w').write(s)
+              if a in s: s=s.replace(a, a+'\n'+perm.rstrip('\n'))
+              else: s=s.replace('</manifest>', perm+'</manifest>')
+          io.open(p,'w').write(s)
+          assert 'ACCESS_FINE_LOCATION' not in s, '정밀 위치 권한이 남아 있음'
           print('\n'.join(l for l in s.split('\n') if 'permission' in l))
+          PY
+          # Capacitor의 웹뷰 위치 허용 코드는 «둘 다 허용»이 아니면 Android 12 이상에서만 대략적 위치로 넘어간다.
+          # 정밀 위치를 선언하지 않으면 시스템이 그 요청을 늘 거부하므로, Android 11 이하에서는 위치가 통째로 막힌다.
+          # Android 버전 조건을 빼서 «대략적 위치만 허용돼도 OK»가 모든 버전에서 돌게 한다. 앵커가 없으면(캐패시터가 바뀌면) 빌드를 세운다.
+          python3 - <<'PY'
+          import io, glob
+          c=glob.glob('node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/BridgeWebChromeClient.java')
+          assert c, 'BridgeWebChromeClient.java 를 못 찾음'
+          p=c[0]; s=io.open(p,encoding='utf-8').read()
+          old='Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&'
+          if s.count(old)==1:
+              io.open(p,'w',encoding='utf-8').write(s.replace(old,'true /* 대략적 위치만 허용돼도 OK — 모든 Android 버전 */ &&'))
+              print('Capacitor 웹뷰 위치 허용: 대략적 위치만 허용돼도 모든 Android 버전에서 통과하게 고침')
+          elif '대략적 위치만 허용돼도 OK' in s:
+              print('Capacitor 웹뷰 위치 허용: 이미 고쳐져 있음')
+          else:
+              raise SystemExit('대략적 위치 허용 조건(앵커)을 못 찾음 — 캐패시터 코드가 바뀜. 이 단계를 다시 봐야 함')
           PY
 
       - name: 서명 설정을 프로젝트에 못박기 + 버전 올리기
