@@ -2582,6 +2582,8 @@ function vEvents(){
    +'<button class="'+(evPref.free?'sec':'ghost')+'" onclick="evToggle(\'free\')" aria-pressed="'+(evPref.free?'true':'false')+'">'+(evPref.free?'✓ ':'')+'무료만</button></div>';
   if(!regs){ h+='<div class="notice" style="font-size:13.5px">먼저 <b>지역</b>을 골라 주세요. 자주 가는 곳이 여럿이면 여러 개 눌러도 돼요.</div>'; return h+evFoot(); }
   if(!evData){ h+='<div class="card"><div class="small">'+(evBusy?"행사 목록을 받아오는 중…":esc(evErr||"행사 목록을 아직 못 받았어요."))+'</div>'+(evBusy?'':'<button class="sec" onclick="evLoad(true)">다시 받기</button>')+'</div>'; return h+evFoot(); }
+  /* 목록 파일은 받았는데 비어 있음 = 자동 작업이 아직 자료를 모으지 않음. «조건에 맞는 게 없다»고 하면 기간·지역을 바꿔 봐도 소용없어 헷갈린다 */
+  if(!evData.events.length){ h+='<div class="card"><div class="small">행사 목록이 아직 비어 있어요. 자료가 준비되면 월·목 아침에 저절로 채워져요 — 그때 홈에도 카드가 나와요.</div><button class="sec" onclick="evLoad(true)">다시 받기</button></div>'; return h+evFoot(); }
   const L=evList();
   h+='<div class="small" style="margin-bottom:8px"><b>'+L.length+'개</b>'+(evPref.age?' · 생후 '+monthAge()+'개월에 맞는 것':'')+' · '+esc(regs.length?regs.join("·"):"전국")+(evData.updated?' · 목록 '+esc(evData.updated)+' 기준':'')+'</div>';
   if(!L.length){
