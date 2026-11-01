@@ -175,8 +175,19 @@ const browser = await chromium.launch(launchOpts);
 const VIEWS = ['home','plays','food','log','sleep','er','moon','events','map','vax','backup','summary','settings'];
 const CHILD = JSON.stringify({birth:'2025-12-25',due:null,domain:'인지',reason:'play',name:'아기'});
 
-async function fresh(opts={}) {
-  const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light', ...opts});
+/* 행사 목록은 실제 사이트 대신 이 커밋의 assets/events.json으로 받는다 — 인터넷이 되는 CI와 막힌 로컬이 같은 자료로 돌게.
+   2026-11-02: 실제 자료가 생기자 CI에서만 «목록을 못 받았을 때» 검사가 실패했다(fresh 안에서 진짜 목록을 이미 받아 버림) */
+const EV_LIVE = 'https://goseumi-app.github.io/assets/events.json*';
+const EV_FILE = path.join(ROOT, 'assets', 'events.json');
+async function newCtx(opts) {
+  const c = await browser.newContext(opts);
+  await c.route(EV_LIVE, r => fs.existsSync(EV_FILE) ? r.fulfill({ path: EV_FILE, contentType: 'application/json; charset=utf-8' }) : r.abort());
+  return c;
+}
+/* before(ctx): 첫 화면을 열기 전에 해 둘 일 — 예: 행사 목록 받기를 처음부터 막기 */
+async function fresh(opts={}, before) {
+  const ctx = await newCtx({viewport:{width:412,height:900}, colorScheme:'light', ...opts});
+  if (before) await before(ctx);
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', e=>errs.push(e.message));
   await page.goto(BASE);
@@ -331,7 +342,7 @@ async function fresh(opts={}) {
 
 /* 2-4. 폰 뒤로가기 */
 {
-  const ctx = await browser.newContext({viewport:{width:412,height:900}});
+  const ctx = await newCtx({viewport:{width:412,height:900}});
   await ctx.addInitScript(()=>{ window.__exit=0; window.__h=[];
     window.Capacitor={isNativePlatform:()=>true,getPlatform:()=>'android',
       Plugins:{App:{addListener:(n,f)=>{if(n==='backButton')window.__h.push(f);return{remove(){}}},exitApp:()=>{window.__exit++}}}}; });
@@ -416,7 +427,7 @@ try {
   if (!(lc[0]==='' && lc[1]===1 && (lc[2]||[]).length===1)) lost.push('오늘 쓰기 저장 '+JSON.stringify(lc));
   await ctx.close();
   /* ④ 첫 설정 — 생일·이름을 적고 «예정일보다 이르게»를 눌러도 남는다 */
-  const c2 = await browser.newContext({viewport:{width:412,height:900}});
+  const c2 = await newCtx({viewport:{width:412,height:900}});
   const p2 = await c2.newPage(); const e2 = []; p2.on('pageerror', e=>e2.push(e.message)); p2.setDefaultTimeout(4000);
   await p2.goto(BASE); await p2.waitForTimeout(400);
   await p2.fill('#obBirth','2026-03-01'); await p2.fill('#obName','봄이');
@@ -546,9 +557,8 @@ try {
    주말에 열리는 인천 전연령 행사는 나오고, 36개월 이상 행사·다른 지역 행사·지난 행사는 빠지고, «나이 맞는 것만»을 끄면 36개월 행사가 나온다.
    네트워크 없이(목록을 못 받은 상태) 홈·행사 화면이 오류 없이 그려지는지도 본다. (공개 저장소라 행사 이름은 전부 «예시») */
 try {
-  const {ctx,page,errs} = await fresh();
+  const {ctx,page,errs} = await fresh({}, c => c.route('**/assets/events.json*', r => r.abort()));   /* 받아오기 실패 상황 — 첫 화면부터 */
   page.setDefaultTimeout(4000);
-  await page.route('**/assets/events.json*', r => r.abort());          /* 받아오기 실패 상황 */
   const offline = await page.evaluate(async ()=>{
     child.birth = addDays(todayStr(), -305); save();                       /* 생후 10개월쯤 */
     go('home'); const home1 = document.querySelector('main').innerText;
@@ -615,7 +625,7 @@ try {
 
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
-  const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
+  const ctx = await newCtx({viewport:{width:412,height:900}, colorScheme:'light'});
   const page = await ctx.newPage();
   await page.goto(BASE);
   /* 놀이가 있는 최대 월령보다 반년 큰 아이 — 놀이가 늘어나도 검사가 저절로 따라간다 */
@@ -636,7 +646,7 @@ try {
 
 /* 2-5c. 월령에 맞는 추천 — 20개월 아이에게 7~8개월 놀이를 내밀지 않는다 (v27까지 실제로 그랬다) */
 {
-  const ctx = await browser.newContext({viewport:{width:412,height:900}, colorScheme:'light'});
+  const ctx = await newCtx({viewport:{width:412,height:900}, colorScheme:'light'});
   const page = await ctx.newPage();
   await page.goto(BASE);
   const b20 = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-20); d.setDate(d.getDate()-3); return d.toISOString().slice(0,10); })();
@@ -655,7 +665,7 @@ try {
 
 /* 2-6. 진료실용 인쇄 — 폰이 다크 모드여도 «흰 종이·검은 글씨»여야 한다 */
 {
-  const ctx = await browser.newContext({viewport:{width:900,height:1200}, colorScheme:'dark'});
+  const ctx = await newCtx({viewport:{width:900,height:1200}, colorScheme:'dark'});
   const page = await ctx.newPage();
   await page.goto(BASE);
   await page.evaluate(c=>{ localStorage.setItem('siwoo.child', c);
@@ -688,7 +698,7 @@ try {
 
 /* 2-7. 오프라인 */
 {
-  const ctx = await browser.newContext({viewport:{width:412,height:900}});
+  const ctx = await newCtx({viewport:{width:412,height:900}});
   const page = await ctx.newPage();
   await page.goto(BASE);
   await page.evaluate(c=>localStorage.setItem('siwoo.child', c), CHILD);
@@ -784,7 +794,7 @@ if (fs.existsSync(path.join(ROOT,'index.html'))) {
   const errs=[], low=[];
   const samples=['/','/play/8.html','/moon/','/moon/gyeonggi.html','/404.html'].filter(u=>fs.existsSync(path.join(ROOT,(u.endsWith('/')?u+'index.html':u).slice(1))));
   for (const scheme of ['light','dark']) for (const u of samples) {
-    const ctx = await browser.newContext({viewport:{width:390,height:844}, colorScheme:scheme});
+    const ctx = await newCtx({viewport:{width:390,height:844}, colorScheme:scheme});
     const page = await ctx.newPage(); page.on('pageerror', e=>errs.push(u+' '+e.message));
     await page.goto(SB+u, {waitUntil:'load'});
     await page.evaluate(()=>{ document.querySelectorAll('.reveal').forEach(e=>e.classList.add('in')); document.querySelectorAll('details').forEach(d=>d.open=true);
