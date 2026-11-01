@@ -93,10 +93,19 @@ function parseAge(raw) {
   const t = strip(raw).replace(/\s+/g, '');
   const out = { min: null, max: null, text: cut(raw, 24) || null };
   if (!t) return out;
-  const kid = /어린이|아동|유아|아기|아이|키즈|자녀|영아|kids/i.test(t);
+  const kid = /어린이|아동|유아|아기|아이|키즈|자녀|영아|kids|가족|부모와/i.test(t);
   const set = (min, max) => { out.min = min; out.max = max; return out; };
-  if (ADULT_RE.test(t) && !kid) return set(999, null);
   let m;
+  /* 부모만 듣는 강연·모임(자녀를 둔 학부모, 양육자 대상) — 아이를 데려가는 나들이가 아니다. «함께·동반»이면 가족 행사로 본다 */
+  if (/자녀를둔|양육하시는|양육하는|학부모대상|학부모및|학부모\d|부모교육/.test(t) && !/함께|동반|가족과|아이와/.test(t)) return set(999, null);
+  if (/양육자|보호자/.test(t) && !/어린이|유아|영아|아기|아동|초등|해봄이|자녀와|아이와/.test(t) && !/함께|동반|가족/.test(t)) return set(999, null);   /* «어린이 및 양육자»는 가족 행사 */
+  if (ADULT_RE.test(t) && !kid) return set(999, null);
+  /* «청소년 이상 누구나»·«성인 누구나»·«누구나(성인 40명)»·«청년» — «누구나»보다 먼저 본다(2026-11 첫 자료에서 0개월로 잘못 읽었음) */
+  if (!kid && /청소년이상|중학생이상|중학생부터|고등학생이상|고교생이상|성인누구나|성인\d|^성인|청년/.test(t)) return set(999, null);
+  /* «미취학 아동 입장 불가»·«8세 미만 입장 불가» — 아래 «미만» 규칙(0~N)보다 먼저: 뜻이 정반대다 */
+  if (/미취학[^,.]{0,6}(입장|관람)?(불가|제한|금지)/.test(t)) return set(84, null);
+  if ((m = t.match(/(\d{1,2})세미만(입장|관람)?(불가|제한|금지)/))) return set(+m[1] * 12, null);
+  if ((m = t.match(/(\d+)개월미만(입장|관람)?(불가|제한|금지)/))) return set(+m[1], null);
   if ((m = t.match(/(\d+)(?:개월)?~(\d+)개월/))) return set(+m[1], +m[2]);                       /* 12개월~36개월, 만 0~36개월 */
   if ((m = t.match(/(\d+)개월~만?(\d{1,2})세/))) return set(+m[1], +m[2] * 12 + 11);           /* 24개월~7세 */
   if ((m = t.match(/(\d+)개월~초/))) return set(+m[1], 155);                                     /* 36개월~초등 */
@@ -104,8 +113,9 @@ function parseAge(raw) {
   if ((m = t.match(/(\d+)개월(이하|까지|미만)/))) return set(0, +m[1]);                          /* 24개월 이하 */
   if ((m = t.match(/만?(\d{1,2})(?:세)?~만?(\d{1,2})세/))) return set(+m[1] * 12, +m[2] * 12 + 11); /* 4~7세, 6세~13세, 만 4세~만 7세 */
   if ((m = t.match(/만?(\d{1,2})세~초/))) return set(+m[1] * 12, 155);                           /* 5세~초등 */
-  if ((m = t.match(/만?(\d{1,2})세(이상|부터)/))) return set(+m[1] * 12, null);                  /* 만 3세 이상 */
+  if ((m = t.match(/만?(\d{1,2})세[^0-9~]{0,8}?(이상|부터)/))) return set(+m[1] * 12, null);     /* 만 3세 이상, 누구나(만 13세(중학생)이상) */
   if ((m = t.match(/만?(\d{1,2})세(이하|까지|미만)/))) return set(0, +m[1] * 12 + 11);           /* 7세 이하 */
+  if (/초[·.,]?중/.test(t)) return set(72, null);                                             /* 초·중·고 학생 */
   if ((m = t.match(/초(?:등(?:학교|학생)?(\d)학년|등|(\d))/))) {                                /* 초등, 초4 이상, 초등 3학년 이상, 초등 이하 */
     if (/이하|까지/.test(t) && !/이상/.test(t)) return set(0, 155);
     const g = m[1] || m[2];
@@ -123,6 +133,28 @@ function parseAge(raw) {
 /* ───────── 아이와 갈 만한가 ───────── */
 const KID_WORDS = /어린이|아동|유아|영유아|아기|키즈|kids|가족|패밀리|동화|그림책|인형극|마술|체험|놀이|축제|과학관|박물관|미술관|도서관|숲|공원|동물|공룡|로봇|레고|블록|모래|물놀이|썰매|눈|농장|수확|고구마|감|딸기|사과|캠프|자연|생태|곤충|텃밭|만들기|공작|클래식\s*for\s*kids|오케스트라|뮤지컬|발레|국악|사물놀이|퍼레이드|불꽃|빛|등불|크리스마스|산타|핼러윈|할로윈/i;
 const NO_WORDS = /맥주|와인|막걸리|소주|주류|전통주|칵테일|위스키|성인\s*전용|19금|클럽|나이트|채용|취업|박람회\s*\(산업|부동산|세미나|학술|포럼|컨퍼런스|콘퍼런스|심포지엄|경진대회|공모전|입찰|설명회|강연\s*\(성인|재테크|주식|코인|웨딩|결혼|상조|장례|요가\s*클래스|헬스|피트니스|마라톤\s*참가\s*신청|드라이빙|카지노|경마|경륜|로또/i;
+
+/* 아이를 데리고 가는 나들이가 아닌 것 — 2026-11 첫 서울 자료에서 북토크·강연·창업·아카데미·단체 교육·온라인 전시가 «누구나»로 섞여 들어왔다 */
+const STRONG_KID = /어린이|유아|영아|영유아|아기|베이비|키즈|kids|가족|패밀리|그림책|동화|인형극|동요|아이와|엄마|아빠|부모와|어린이집|유치원/i;
+const HARD_NO_TITLE = /시니어|어르신|중장년|직장인|창업|양성\s*과정|강사\s*(모집|양성)|할인\s*안내|단체\s*관람|학급\s*단체|단체\s*교육|온라인|찾아가는|교육생\s*모집|수강생\s*모집|일반교육\s*모집|졸업\s*(전시|작품)|아카데미|시민대학|정규\s*강좌|독서\s*토론|북\s*토크|작가\s*힙톡|초대석|미식\s*투어/i;
+const SOFT_NO_TITLE = /학부모|양육자|강연|특강|인문학|토크\s*콘서트|작가와의\s*(만남|대화)|창작\s*(클래스|트레이닝)|원데이\s*클래스|영화제|상영회|영화관/i;
+function notForKids(title, trgt) {
+  if (HARD_NO_TITLE.test(title)) return true;
+  if (SOFT_NO_TITLE.test(title) && !STRONG_KID.test(title)) return true;
+  const tg = strip(trgt || '').replace(/\s+/g, '');
+  if (/단체/.test(tg)) return true;                                     /* 학급·어린이집 단체 전용 — 가족끼리 갈 수 없다 */
+  if (/(^|[^내])외국인/.test(tg)) return true;                           /* 외국인 대상 (내외국인 누구나는 남김) */
+  if (/경력|창작자|극작가/.test(tg)) return true;                         /* 전문가 대상 */
+  if (/회원$|회원만/.test(tg) && !STRONG_KID.test(tg)) return true;      /* 회원 전용 강좌 */
+  return false;
+}
+/* 앱 정렬용 — 아이 나이를 콕 집은 행사(3) > 이름에 아이·가족이 들어간 행사(2) > 누구나(1) > 모름(0) */
+function kidScore(title, age) {
+  if (age.min != null && age.min !== 999 && ((age.max != null && age.max <= 155) || (age.min > 0 && age.min < 84))) return 3;
+  if (STRONG_KID.test(title)) return 2;
+  if (age.min === 0 && age.max == null) return 1;
+  return 0;
+}
 
 /* ───────── 받아오기 ───────── */
 async function getJSON(url, { timeout = 30000, as = 'json' } = {}) {
@@ -186,10 +218,12 @@ async function fetchSeoul(key, log) {
       const start_ = normDate(r.STRTDATE), end_ = normDate(r.END_DATE);
       if (!inWindow(start_, end_)) continue;
       const trgt = strip(r.USE_TRGT), title = strip(r.TITLE), code = strip(r.CODENAME);
-      if (NO_WORDS.test(title) || NO_WORDS.test(trgt)) continue;
+      if (NO_WORDS.test(title) || NO_WORDS.test(trgt) || notForKids(title, trgt)) continue;
       const age = parseAge(trgt);
-      const kidish = age.min !== null && age.min !== 999 ? true : KID_WORDS.test(title) || /어린이|유아|가족|누구나|전체|전연령|아동|아이/.test(trgt) || /교육\/체험|축제/.test(code);
-      if (!kidish || age.min === 999) continue;
+      if (age.min === 999) continue;
+      const kid = kidScore(title, age);
+      const kidish = kid >= 1 || KID_WORDS.test(title) || /교육\/체험|축제/.test(code);
+      if (!kidish) continue;
       const free = r.IS_FREE === '무료' ? true : (r.IS_FREE === '유료' ? false : null);
       out.push({
         src: 'seoul', id: 'seoul:' + hash(title + start_ + strip(r.PLACE)),
@@ -197,7 +231,7 @@ async function fetchSeoul(key, log) {
         start: start_, end: end_, ageMin: age.min, ageMax: age.max, ageText: age.text,
         free, fee: free === false ? cut(r.USE_FEE, 40) || null : null,
         url: safeUrl(r.ORG_LINK) || safeUrl(r.HMPG_ADDR), img: safeUrl(r.MAIN_IMG),
-        kind: kindOf(code + ' ' + title),
+        kind: kindOf(code + ' ' + title), kid,
       });
     }
     log(`서울 ${start}~${end}: 전체 ${total}, 모음 ${out.length}`);
@@ -215,10 +249,13 @@ async function fetchDataGo(key, log) {
     const start = normDate(r.eventStartDate), end = normDate(r.eventEndDate);
     if (!inWindow(start, end)) return null;
     const title = strip(r.eventNm), body = strip(r.eventCo);
-    if (NO_WORDS.test(title) || NO_WORDS.test(body)) return null;
+    if (NO_WORDS.test(title) || NO_WORDS.test(body) || notForKids(title, r.entrcAge)) return null;
     const age = parseAge(r.entrcAge);
-    const kidish = (age.min !== null && age.min !== 999) ? true : KID_WORDS.test(title) || KID_WORDS.test(body.slice(0, 200));
-    if (!kidish || age.min === 999) return null;
+    if (age.min === 999) return null;
+    const kid = kidScore(title, age);
+    /* 전국 공연 자료에는 «전체관람가» 어른 공연이 많다 — 나이를 콕 집었거나, 이름·소개에 아이와 갈 만한 낱말이 있을 때만 */
+    const kidish = kid >= 2 || (kid === 1 && KID_WORDS.test(title + ' ' + body.slice(0, 200))) || (kid === 0 && STRONG_KID.test(body.slice(0, 200)));
+    if (!kidish) return null;
     const feeT = strip(r.admfee || r.chrgeInfo);
     const free = isFree(feeT);
     const addr = strip(r.rdnmadr || r.lnmadr);
@@ -227,7 +264,7 @@ async function fetchDataGo(key, log) {
       title: cut(title, 70), place: cut(r.opar, 40) || null, sido: sidoOf(addr, r.insttNm), gu: guOf(addr),
       start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
       free, fee: free === false ? cut(feeT, 40) : null,
-      url: safeUrl(r.homepageUrl) || safeUrl(r.reservInfo), img: null, kind: kindOf(title + ' ' + body.slice(0, 80)),
+      url: safeUrl(r.homepageUrl) || safeUrl(r.reservInfo), img: null, kind: kindOf(title + ' ' + body.slice(0, 80)), kid,
     };
   }).then(a => out.push(...a));
   /* 2b. 전국문화축제 */
@@ -235,14 +272,14 @@ async function fetchDataGo(key, log) {
     const start = normDate(r.fstvlStartDate), end = normDate(r.fstvlEndDate);
     if (!inWindow(start, end)) return null;
     const title = strip(r.fstvlNm), body = strip(r.fstvlCo);
-    if (NO_WORDS.test(title) || NO_WORDS.test(body.slice(0, 200))) return null;
+    if (NO_WORDS.test(title) || NO_WORDS.test(body.slice(0, 200)) || notForKids(title, '')) return null;
     const addr = strip(r.rdnmadr || r.lnmadr);
     return {
       src: 'data_fest', id: 'df:' + hash(title + start + strip(r.opar)),
       title: cut(title, 70), place: cut(r.opar, 40) || null, sido: sidoOf(addr, r.insttNm), gu: guOf(addr),
       start, end, ageMin: 0, ageMax: null, ageText: '축제 · 연령 제한 표기 없음',
       free: null, fee: null,
-      url: safeUrl(r.homepageUrl), img: null, kind: '축제',
+      url: safeUrl(r.homepageUrl), img: null, kind: '축제', kid: STRONG_KID.test(title + ' ' + body.slice(0, 120)) ? 2 : 1,
     };
   }).then(a => out.push(...a));
   return out;
@@ -251,7 +288,8 @@ async function pagedDataGo(base, key, log, label, mapRow) {
   const out = []; const ROWS = 1000; let total = null;
   for (let page = 1; page <= 60; page++) {
     const j = await getJSON(`${base}?serviceKey=${dataKeyParam(key)}&pageNo=${page}&numOfRows=${ROWS}&type=json`);
-    const hdr = j?.response?.header, body = j?.response?.body;
+    const root = j?.response || j;                       /* 표준데이터 API는 {response:{header,body}} 대신 {header,body}로 줄 때가 있다(2026-11 확인) */
+    const hdr = root?.header, body = root?.body;
     if (!hdr) throw new Error(`${label}: 응답 형식 다름 ${JSON.stringify(j).slice(0, 160)}`);
     if (hdr.resultCode && hdr.resultCode !== '00') throw new Error(`${label}: ${hdr.resultCode} ${hdr.resultMsg}`);
     total = total ?? Number(body?.totalCount || 0);
@@ -301,7 +339,7 @@ async function fetchKopis(key, log) {
       const start = normDate(r.prfpdfrom), end = normDate(r.prfpdto);
       if (!inWindow(start, end)) continue;
       const title = strip(r.prfnm);
-      if (NO_WORDS.test(title)) continue;
+      if (NO_WORDS.test(title) || notForKids(title, '')) continue;
       const age = parseAge(det.prfage);
       if (age.min === 999) continue;
       const feeT = strip(det.pcseguidance);
@@ -311,7 +349,7 @@ async function fetchKopis(key, log) {
         title: cut(title, 70), place: cut(r.fcltynm, 40) || null, sido: sidoOf(r.area, det.area), gu: null,
         start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
         free, fee: free === false ? cut(feeT, 40) : null,
-        url: det._url || null, img: safeUrl(r.poster), kind: kindOf(strip(r.genrenm) + ' ' + title),
+        url: det._url || null, img: safeUrl(r.poster), kind: kindOf(strip(r.genrenm) + ' ' + title), kid: Math.max(2, kidScore(title, age)),
       });
       await sleep(120);
     }
@@ -393,7 +431,14 @@ if (process.env.EV_SELFTEST) {
     ['영유아 및 가족',0,null],['가족',0,null],['어린이',0,null],['청소년',999,null],['중학생 이상',999,null],['성인',999,null],['청소년, 성인',999,null],
     ['48개월~초등',48,155],['만 4세~만 7세',48,95],['8세이상',96,null],['미취학 아동',0,83],['영유아 동반 가족',0,null],['4~7세',48,95],
     ['만 36개월 이상 어린이',36,null],['5세 이상 어린이 및 가족',60,null],['초등 3학년 이상',96,null],['6세 이상(2020년생 이전)',72,null],['12세 이상 관람가',144,null],
-    ['',null,null],['문의',null,null],['어르신',999,null],['학부모 대상 강연',999,null],['학부모와 아이 함께',0,null]];
+    ['',null,null],['문의',null,null],['어르신',999,null],['학부모 대상 강연',999,null],['학부모와 아이 함께',0,null],
+    /* 2026-11-02 첫 서울 자료에서 틀렸던 것 */
+    ['청소년 이상 누구나',999,null],['성인 누구나',999,null],['성인 누구나 20명 내외',999,null],['누구나 (성인 40명)',999,null],['청년 누구나',999,null],
+    ['누구나 (만 13세(중학생)이상)',156,null],['초·중·고 학생 누구나',72,null],['유아, 아동·청소년, 성인 누구나',0,null],['성인, 어린이, 청소년',0,null],
+    ['서울시민 누구나 / 가족·청소년·성인',0,null],['유아 및 초등 자녀를 둔 학부모 25명',999,null],['아이를 양육하시는 성인 누구나',999,null],
+    ['학부모 및 지역주민 20명',999,null],['8개월~16개월 영아 관람객 신청자',8,16],['유아·어린이 동반 30가족',0,null],
+    ['미취학아동 입장불가',84,null],['8세 미만 입장 불가',96,null],['48개월 미만 입장불가',48,null],['36개월 미만 영아, 보호자',0,36],
+    ['6~7세 어린이 및 양육자 10팀',72,95],['초등1-6학년 해봄이와 양육자',72,null],['양육자 누구나',999,null]];
   let bad = 0;
   for (const [s, mi, ma] of T) { const r = parseAge(s); if (r.min !== mi || r.max !== ma) { bad++; console.log('✗', JSON.stringify(s), '→', r.min, r.max, '기대', mi, ma); } }
   console.log(bad ? `나이 읽기 실패 ${bad}건` : `나이 읽기 ${T.length}건 모두 통과`);
