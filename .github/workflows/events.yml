@@ -1,0 +1,63 @@
+name: 행사 목록 만들기 (월·목 아침)
+
+# «이번 주말 어디 갈까» — 공공 자료에서 아이와 갈 만한 행사를 모아 assets/events.json 한 파일로 만든다.
+# 앱은 이 파일 하나만 받아 폰 안에서 아이 개월·지역으로 거른다. 자료 출처·거르는 규칙은 _tools/events/fetch.mjs 머리말에.
+# 열쇠(저장소 Settings → Secrets and variables → Actions): SEOUL_KEY · DATA_GO_KR_KEY · KOPIS_KEY — 있는 것만 쓴다.
+# 열쇠가 하나도 없으면 파일을 건드리지 않고 조용히 끝난다. 열쇠가 있는데 전부 실패하면 실패로 끝난다(옛 파일 유지).
+
+on:
+  schedule:
+    - cron: '0 21 * * 0,3'     # 월·목 06:00 KST (UTC 일·수 21:00)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: events
+  cancel-in-progress: false
+
+jobs:
+  events:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v7
+
+      - name: Node 설치
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: 나이 읽기 자가 점검
+        run: EV_SELFTEST=1 node _tools/events/fetch.mjs
+
+      - name: 행사 모으기
+        env:
+          SEOUL_KEY: ${{ secrets.SEOUL_KEY }}
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          KOPIS_KEY: ${{ secrets.KOPIS_KEY }}
+        run: node _tools/events/fetch.mjs --out assets/events.json --days 60
+
+      - name: 바뀐 것이 있으면 올리기
+        id: push
+        run: |
+          if git diff --quiet -- assets/events.json; then
+            echo "바뀐 것 없음 — 올리지 않음"; echo "pushed=0" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          n=$(node -e "console.log(require('./assets/events.json').count)")
+          git config user.name "goseumi-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/events.json
+          git commit -m "data: 행사 목록 $(TZ=Asia/Seoul date +%Y-%m-%d) — ${n}건 (자동)"
+          git push
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+
+      # 봇이 올린 커밋은 다른 워크플로를 깨우지 않는다. 홈페이지(Pages)가 새 파일을 내보내도록 직접 빌드를 요청한다.
+      - name: 홈페이지 다시 내보내기 요청
+        if: steps.push.outputs.pushed == '1'
+        continue-on-error: true
+        run: |
+          curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages/builds" | head -c 300; echo
