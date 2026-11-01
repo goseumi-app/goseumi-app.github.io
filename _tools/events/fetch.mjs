@@ -37,7 +37,7 @@ function normDate(s) {
   const m = String(s).match(/(\d{4})[.\-\/]?\s*(\d{1,2})[.\-\/]?\s*(\d{1,2})/);
   if (!m) return null;
   const y = +m[1], mo = +m[2], d = +m[3];
-  if (y < 2000 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  if (y < 2000 || y > +TODAY.slice(0, 4) + 10 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;   /* «2626-08-08» 같은 오타는 날짜 없음으로 */
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 function inWindow(start, end) {
@@ -80,6 +80,11 @@ function sidoOf(...cands) {
   }
   return null;
 }
+/* 전남·충남 주소에는 «구»가 바로 오지 않는다 — «전남 동구»는 광주, «충남 유성구»는 대전 (2026-11: 광주 금남로·양림동 축제가 «전남»으로 들어왔다) */
+function fixSido(sido, gu) {
+  if (gu && /구$/.test(gu)) { if (sido === '전남') return '광주'; if (sido === '충남') return '대전'; }
+  return sido;
+}
 function guOf(addr) {
   const s = strip(addr);
   const m = s.match(/^\S+\s+(\S+?(?:시|군|구))(?=\s|$)/);
@@ -87,7 +92,7 @@ function guOf(addr) {
 }
 
 /* ───────── 나이 읽기 — 글 → 개월 ───────── */
-const ALL_RE = /전\s*체|전\s*연령|누구나|제한\s*없|연령\s*무관|모든\s*연령|가족|영유아\s*동반|유아\s*동반|전\s*관람|all\s*ages/i;
+const ALL_RE = /전\s*체|전\s*연\s*[령링]|누구나|^누구$|제한\s*없|연령\s*무관|모든\s*연령|가족|영유아\s*동반|유아\s*동반|전\s*관람|all\s*ages/i;
 const ADULT_RE = /성인\s*(전용|만|대상)|만\s*19세|19세\s*이상|청소년\s*관람\s*불가|18세\s*이상|20세\s*이상|대학생\s*이상|어르신|노인|시니어|직장인|학부모\s*대상(?!.*(어린이|아이|자녀))/;
 function parseAge(raw) {
   const t = strip(raw).replace(/\s+/g, '');
@@ -116,10 +121,13 @@ function parseAge(raw) {
   if ((m = t.match(/만?(\d{1,2})세[^0-9~]{0,8}?(이상|부터)/))) return set(+m[1] * 12, null);     /* 만 3세 이상, 누구나(만 13세(중학생)이상) */
   if ((m = t.match(/만?(\d{1,2})세(이하|까지|미만)/))) return set(0, +m[1] * 12 + 11);           /* 7세 이하 */
   if (/초[·.,]?중/.test(t)) return set(72, null);                                             /* 초·중·고 학생 */
+  if ((m = t.match(/초(?:등(?:학교|학생)?)?(\d)[-~](\d)학년/))) return set(72 + (+m[1] - 1) * 12, 72 + +m[2] * 12 - 1);   /* 초등 1-3학년, 초등학교 5~6학년 */
   if ((m = t.match(/초(?:등(?:학교|학생)?(\d)학년|등|(\d))/))) {                                /* 초등, 초4 이상, 초등 3학년 이상, 초등 이하 */
     if (/이하|까지/.test(t) && !/이상/.test(t)) return set(0, 155);
-    const g = m[1] || m[2];
-    return set(72 + (g ? (+g - 1) * 12 : 0), null);
+    if (/유아|영아|아기|미취학|유치원|어린이집/.test(t) && !/이상|부터/.test(t)) return set(0, 155);   /* 유아 및 초등학생 */
+    const g = m[1] || m[2], lo = 72 + (g ? (+g - 1) * 12 : 0);
+    if (/이상|부터|누구나/.test(t)) return set(lo, null);                                      /* «초등학생 이상» — 어린아이를 막는 표기 */
+    return set(lo, g ? lo + 11 : 155);                                                         /* «초등학생»·«초등 1학년» — 그 나이 아이 대상 */
   }
   if (/미취학/.test(t)) return set(0, 83);
   if (/영아|아기|베이비|baby|돌전|돌이전/i.test(t)) return set(0, 36);
@@ -135,8 +143,8 @@ const KID_WORDS = /어린이|아동|유아|영유아|아기|키즈|kids|가족|�
 const NO_WORDS = /맥주|와인|막걸리|소주|주류|전통주|칵테일|위스키|성인\s*전용|19금|클럽|나이트|채용|취업|박람회\s*\(산업|부동산|세미나|학술|포럼|컨퍼런스|콘퍼런스|심포지엄|경진대회|공모전|입찰|설명회|강연\s*\(성인|재테크|주식|코인|웨딩|결혼|상조|장례|요가\s*클래스|헬스|피트니스|마라톤\s*참가\s*신청|드라이빙|카지노|경마|경륜|로또/i;
 
 /* 아이를 데리고 가는 나들이가 아닌 것 — 2026-11 첫 서울 자료에서 북토크·강연·창업·아카데미·단체 교육·온라인 전시가 «누구나»로 섞여 들어왔다 */
-const STRONG_KID = /어린이|유아|영아|영유아|아기|베이비|키즈|kids|가족|패밀리|그림책|동화|인형극|동요|아이와|엄마|아빠|부모와|어린이집|유치원/i;
-const HARD_NO_TITLE = /시니어|어르신|중장년|직장인|창업|양성\s*과정|강사\s*(모집|양성)|할인\s*안내|단체\s*관람|학급\s*단체|단체\s*교육|온라인|찾아가는|교육생\s*모집|수강생\s*모집|일반교육\s*모집|졸업\s*(전시|작품)|아카데미|시민대학|정규\s*강좌|독서\s*토론|북\s*토크|작가\s*힙톡|초대석|미식\s*투어/i;
+const STRONG_KID = /어린이|유아|영아|영유아|아기|베이비|키즈|kids|가족|패밀리|그림책|동화|인형극|동요|아이와|엄마|아빠|부모와|어린이집|유치원|꼬마|베베|핑크퐁|뽀로로|타요|로보카\s*폴리|콩순이|티니핑|브레드\s*이발소|슈퍼윙스|미니특공대|헬로\s*카봇|띠띠뽀|번개맨|코코몽|구름빵/i;
+const HARD_NO_TITLE = /시니어|어르신|중장년|직장인|창업|양성\s*과정|강사\s*(모집|양성)|할인\s*안내|단체\s*관람|학급\s*단체|단체\s*교육|온라인|찾아가는|교육생\s*모집|수강생\s*모집|일반교육\s*모집|졸업\s*(전시|작품)|아카데미|시민대학|정규\s*강좌|독서\s*토론|북\s*토크|작가\s*힙톡|초대석|미식\s*투어|운영\s*안내|휴관/i;
 const SOFT_NO_TITLE = /학부모|양육자|강연|특강|인문학|토크\s*콘서트|작가와의\s*(만남|대화)|창작\s*(클래스|트레이닝)|원데이\s*클래스|영화제|상영회|영화관/i;
 function notForKids(title, trgt) {
   if (HARD_NO_TITLE.test(title)) return true;
@@ -148,12 +156,26 @@ function notForKids(title, trgt) {
   if (/회원$|회원만/.test(tg) && !STRONG_KID.test(tg)) return true;      /* 회원 전용 강좌 */
   return false;
 }
-/* 앱 정렬용 — 아이 나이를 콕 집은 행사(3) > 이름에 아이·가족이 들어간 행사(2) > 누구나(1) > 모름(0) */
+/* 앱 정렬용 — 아이 나이를 콕 집은 행사(3) > 이름에 아이·가족이 들어간 행사(2) > 누구나(1) > 모름(0)
+   «초등학생 이상»은 아이 대상이 아니라 어린아이를 막는 표기다 — 2026-11 첫 자료에서 재즈·고음악 공연이 3점을 받았다 */
 function kidScore(title, age) {
-  if (age.min != null && age.min !== 999 && ((age.max != null && age.max <= 155) || (age.min > 0 && age.min < 84))) return 3;
+  const known = age.min != null && age.min !== 999;
+  if (known && age.max != null && age.max <= 155) return 3;   /* 6~9세, 36개월 미만, 초등 1~3학년 */
+  if (known && age.min > 0 && age.min <= 48) return 3;        /* 24개월·36개월·만 3~4세 이상 — 어린이 공연에서 흔한 표기 */
   if (STRONG_KID.test(title)) return 2;
-  if (age.min === 0 && age.max == null) return 1;
+  if (known && age.min < 72) return 1;                        /* 누구나, 만 5세 이상 */
   return 0;
+}
+/* 이름만 봐서는 무슨 행사인지 모르는 것 — «2026년 11월 공연 (1회)», «○○아트홀 기획공연», «11월 문화프로그램 안내» */
+function genericTitle(title) {
+  let t = strip(title).replace(/^\[[^\]]*\]/, ' ').trim();        /* 앞머리 [기관 이름]만 뗀다 — 뒤쪽 [별난 극장 놀이터]가 진짜 이름일 때가 많다 */
+  if (!t) t = strip(title).replace(/[[\]]/g, ' ');
+  t = t.replace(/\(\s*\d+\s*회차?\s*\)/g, ' ').replace(/(19|20)\d{2}\s*년?|\d{1,2}\s*월/g, ' ').replace(/\s+/g, ' ').trim();
+  return !t || /^(\S+\s*)?(기획\s*공연|정기\s*공연|공연|행사|문화\s*행사|프로그램|문화\s*프로그램)(\s*안내)?$/.test(t);
+}
+/* 날짜를 몰라 1월 1일~12월 31일로 채워 둔 것 (2026-11: 당진 축제 두 건) */
+function placeholderRange(start, end) {
+  return !!(start && end && start.slice(0, 4) === end.slice(0, 4) && start.slice(5) === '01-01' && end.slice(5) === '12-31');
 }
 
 /* ───────── 받아오기 ───────── */
@@ -247,7 +269,7 @@ async function fetchDataGo(key, log) {
   /* 2a. 전국공연행사정보 */
   await pagedDataGo(`https://api.data.go.kr/openapi/tn_pubr_public_pblprfr_event_info_api`, key, log, '공연행사', (r) => {
     const start = normDate(r.eventStartDate), end = normDate(r.eventEndDate);
-    if (!inWindow(start, end)) return null;
+    if (!inWindow(start, end) || placeholderRange(start, end)) return null;
     const title = strip(r.eventNm), body = strip(r.eventCo);
     if (NO_WORDS.test(title) || NO_WORDS.test(body) || notForKids(title, r.entrcAge)) return null;
     const age = parseAge(r.entrcAge);
@@ -258,10 +280,10 @@ async function fetchDataGo(key, log) {
     if (!kidish) return null;
     const feeT = strip(r.admfee || r.chrgeInfo);
     const free = isFree(feeT);
-    const addr = strip(r.rdnmadr || r.lnmadr);
+    const addr = strip(r.rdnmadr || r.lnmadr), gu = guOf(addr);
     return {
       src: 'data_event', id: 'de:' + hash(title + start + strip(r.opar)),
-      title: cut(title, 70), place: cut(r.opar, 40) || null, sido: sidoOf(addr, r.insttNm), gu: guOf(addr),
+      title: cut(title, 70), place: cut(r.opar, 40) || null, sido: fixSido(sidoOf(addr, r.insttNm), gu), gu,
       start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
       free, fee: free === false ? cut(feeT, 40) : null,
       url: safeUrl(r.homepageUrl) || safeUrl(r.reservInfo), img: null, kind: kindOf(title + ' ' + body.slice(0, 80)), kid,
@@ -270,13 +292,13 @@ async function fetchDataGo(key, log) {
   /* 2b. 전국문화축제 */
   await pagedDataGo(`https://api.data.go.kr/openapi/tn_pubr_public_cltur_fstvl_api`, key, log, '문화축제', (r) => {
     const start = normDate(r.fstvlStartDate), end = normDate(r.fstvlEndDate);
-    if (!inWindow(start, end)) return null;
+    if (!inWindow(start, end) || placeholderRange(start, end)) return null;
     const title = strip(r.fstvlNm), body = strip(r.fstvlCo);
     if (NO_WORDS.test(title) || NO_WORDS.test(body.slice(0, 200)) || notForKids(title, '')) return null;
-    const addr = strip(r.rdnmadr || r.lnmadr);
+    const addr = strip(r.rdnmadr || r.lnmadr), gu = guOf(addr);
     return {
       src: 'data_fest', id: 'df:' + hash(title + start + strip(r.opar)),
-      title: cut(title, 70), place: cut(r.opar, 40) || null, sido: sidoOf(addr, r.insttNm), gu: guOf(addr),
+      title: cut(title, 70), place: cut(r.opar, 40) || null, sido: fixSido(sidoOf(addr, r.insttNm), gu), gu,
       start, end, ageMin: 0, ageMax: null, ageText: '축제 · 연령 제한 표기 없음',
       free: null, fee: null,
       url: safeUrl(r.homepageUrl), img: null, kind: '축제', kid: STRONG_KID.test(title + ' ' + body.slice(0, 120)) ? 2 : 1,
@@ -367,13 +389,34 @@ function kindOf(t) {
   return '기타';
 }
 function hash(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
+/* 같은 행사 묶기 — 해마다 붙는 «2026»·«제25회», «(1회)» 따위를 떼고 이름·시도가 같으면서 날짜가 겹치거나 바로 이어지면 하나로.
+   2026-11 첫 전국 자료: «구미라면축제»와 «2026 구미라면축제», «청송사과축제» 두 건, 이틀 연달아 올린 같은 발레 공연 */
+function normTitle(t) {
+  return String(t || '').toLowerCase()
+    .replace(/\(\s*\d+\s*회차?\s*\)/g, '')
+    .replace(/(19|20)\d{2}\s*년?/g, '')
+    .replace(/제?\s*\d+\s*회(?!차)/g, '')
+    .replace(/[^0-9a-z가-힣]/g, '');
+}
 function dedupe(events) {
   const prio = { kopis: 0, seoul: 1, data_event: 2, data_fest: 3 };
-  events.sort((a, b) => prio[a.src] - prio[b.src]);
-  const seen = new Set(); const out = [];
+  events.sort((a, b) => (prio[a.src] - prio[b.src]) || (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const groups = new Map(); const out = [];
   for (const e of events) {
-    const k = (e.title.replace(/\s+/g, '').toLowerCase().slice(0, 24)) + '|' + (e.start || '') + '|' + ((e.place || '').replace(/\s+/g, '').slice(0, 10));
-    if (seen.has(k)) continue; seen.add(k); out.push(e);
+    const nt = normTitle(e.title);
+    const k = (nt.length >= 2 ? nt : e.title.replace(/\s+/g, '')) + '|' + (e.sido || '');
+    const g = groups.get(k) || [];
+    const hit = g.find(x => (!x.gu || !e.gu || x.gu === e.gu) && x.start <= addDays(e.end, 1) && e.start <= addDays(x.end, 1));
+    if (hit) {
+      if (e.start < hit.start) hit.start = e.start;
+      if (e.end > hit.end) hit.end = e.end;
+      if (!hit.url && e.url) hit.url = e.url;
+      if (!hit.gu && e.gu) hit.gu = e.gu;
+      if (hit.ageMin == null && e.ageMin != null) { hit.ageMin = e.ageMin; hit.ageMax = e.ageMax; hit.ageText = e.ageText; }
+      hit.kid = Math.max(hit.kid || 0, e.kid || 0);
+      continue;
+    }
+    g.push(e); groups.set(k, g); out.push(e);
   }
   return out;
 }
@@ -395,7 +438,7 @@ async function main() {
   const okCount = Object.values(status).filter(s => s.ok).length;
   if (!okCount) { console.error('받아온 자료가 하나도 없습니다. 옛 파일을 그대로 둡니다.'); summary({ status, failed: true }); return 1; }
 
-  all = all.filter(e => e.title && (e.start || e.end) && e.ageMin !== 999 && !(e.ageMin != null && e.ageMin >= 84));
+  all = all.filter(e => e.title && !genericTitle(e.title) && (e.start || e.end) && e.ageMin !== 999 && !(e.ageMin != null && e.ageMin >= 84));
   all.forEach(e => { if (!e.start) e.start = e.end; if (!e.end) e.end = e.start; if (e.ageMin != null && e.ageMax != null && e.ageMax < e.ageMin) e.ageMax = null; });
   all = dedupe(all);
   all.sort((a, b) => (a.start > b.start ? 1 : a.start < b.start ? -1 : (a.sido || '') < (b.sido || '') ? -1 : 1));
@@ -427,7 +470,7 @@ function summary({ status = {}, data, skipped, failed }) {
 if (process.env.EV_SELFTEST) {
   const T = [['전체관람가',0,null],['전연령',0,null],['누구나',0,null],['만 24개월 이상',24,null],['24개월~7세',24,95],['36개월 이상',36,null],
     ['12개월 미만',0,12],['12개월~36개월',12,36],['만 0~36개월',0,36],['만 3세 이상',36,null],['5세 이상',60,null],['6세~7세',72,95],['6세 ~ 13세',72,167],
-    ['7세 이하',0,95],['초등',72,null],['초등 이상',72,null],['초4 이상',108,null],['초등 이하',0,155],['5세~초등',60,155],['1세 ~ 10세',12,131],['유아',0,null],
+    ['7세 이하',0,95],['초등',72,155],['초등 이상',72,null],['초4 이상',108,null],['초등 이하',0,155],['5세~초등',60,155],['1세 ~ 10세',12,131],['유아',0,null],
     ['영유아 및 가족',0,null],['가족',0,null],['어린이',0,null],['청소년',999,null],['중학생 이상',999,null],['성인',999,null],['청소년, 성인',999,null],
     ['48개월~초등',48,155],['만 4세~만 7세',48,95],['8세이상',96,null],['미취학 아동',0,83],['영유아 동반 가족',0,null],['4~7세',48,95],
     ['만 36개월 이상 어린이',36,null],['5세 이상 어린이 및 가족',60,null],['초등 3학년 이상',96,null],['6세 이상(2020년생 이전)',72,null],['12세 이상 관람가',144,null],
@@ -438,10 +481,35 @@ if (process.env.EV_SELFTEST) {
     ['서울시민 누구나 / 가족·청소년·성인',0,null],['유아 및 초등 자녀를 둔 학부모 25명',999,null],['아이를 양육하시는 성인 누구나',999,null],
     ['학부모 및 지역주민 20명',999,null],['8개월~16개월 영아 관람객 신청자',8,16],['유아·어린이 동반 30가족',0,null],
     ['미취학아동 입장불가',84,null],['8세 미만 입장 불가',96,null],['48개월 미만 입장불가',48,null],['36개월 미만 영아, 보호자',0,36],
-    ['6~7세 어린이 및 양육자 10팀',72,95],['초등1-6학년 해봄이와 양육자',72,null],['양육자 누구나',999,null]];
+    ['6~7세 어린이 및 양육자 10팀',72,95],['초등1-6학년 해봄이와 양육자',72,143],['양육자 누구나',999,null],
+    /* 2026-11-02 두 번째 손질 — «초등학생 이상»은 아이 대상이 아니다, 학년 범위, 원자료 오타 */
+    ['초등학생 이상 관람가능',72,null],['초등학생',72,155],['초등학생 동반 가족',72,155],['초등학교 5~6학년',120,143],['초등생 (초등 4~6학년)',108,143],
+    ['해봄이로 등록한 초등학교 1-3학년 12명',72,107],['초등 1학년',72,83],['유아 및 초등학생',0,155],['전 연링 (프로그램 별 상이)',0,null],['누구',0,null]];
   let bad = 0;
   for (const [s, mi, ma] of T) { const r = parseAge(s); if (r.min !== mi || r.max !== ma) { bad++; console.log('✗', JSON.stringify(s), '→', r.min, r.max, '기대', mi, ma); } }
-  console.log(bad ? `나이 읽기 실패 ${bad}건` : `나이 읽기 ${T.length}건 모두 통과`);
+  /* 아이 맞춤 점수 · 뭉뚱그린 이름 · 날짜 채움 · 시도 바로잡기 · 같은 행사 묶기 */
+  const K = [['[서초문화재단] 2026 서리풀 재즈페스타', '초등학생 이상 관람가능', 0], ['[서울상상나라] 사랑하는 사이', '36개월 미만 영아, 보호자', 3],
+    ['아이와 함께 듣는 겨울의 클래식 동화', '4세이상 (2022년생 포함 이전 출생자)', 3], ['예술, 마음으로 전하는 가장 특별한 선물', '5세 이상 누구나', 1],
+    ['[소마미술관] 기념에서 풍경으로', '누구', 1], ['베베핀 뮤지컬 두근두근 새친구', '', 2], ['유니버설발레단', '', 0], ['[종로문화재단] 2026 종로 가족공연축제', '누구나', 2],
+    ['[마포구립서강도서관] 11월/어린이메이킹', '초등1-6학년 해봄이와 양육자', 3]];
+  for (const [title, a, want] of K) { const got = kidScore(title, parseAge(a)); if (got !== want) { bad++; console.log('✗ 점수', title, '→', got, '기대', want); } }
+  const G = [['2026년 11월 공연 (1회)', true], ['강서아트리움 기획공연', true], ['[마포구립서강도서관] 11월 문화프로그램 안내', true], ['유니버설발레단', false],
+    ['[동작문화재단] 2026 본동어울마당 아트홀 하반기 정기 기획공연 [본동 세레나데]', false], ['2026 토요키즈클래식 11월', false], ['[아기 돼지 삼형제]', false],
+    ['[꿈의숲아트센터] 통합예술교육 프로그램 [별난 극장 놀이터]', false], ['[개봉도서관] 2026년 특성화 프로그램 [신문으로 배우는 초등 경제교육]', false]];
+  for (const [title, want] of G) if (genericTitle(title) !== want) { bad++; console.log('✗ 이름', title, '→', !want); }
+  if (!placeholderRange('2026-01-01', '2026-12-31') || placeholderRange('2026-01-02', '2026-12-31') || placeholderRange('2026-01-01', '2027-12-31')) { bad++; console.log('✗ 날짜 채움'); }
+  if (normDate('2626-08-08') !== null || normDate('2029-12-30') !== '2029-12-30') { bad++; console.log('✗ 날짜 오타'); }
+  if (fixSido('전남', '동구') !== '광주' || fixSido('전남', '순천시') !== '전남' || fixSido('충남', '유성구') !== '대전' || fixSido('경북', '남구') !== '경북') { bad++; console.log('✗ 시도'); }
+  const ev = (src, title, sido, gu, start, end) => ({ src, title, sido, gu, start, end, url: null, ageMin: 0, ageMax: null, kid: 1 });
+  const D = dedupe([ev('data_fest', '구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'), ev('data_fest', '2026 구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'),
+    ev('data_fest', '2026년 제25회 팔공산 단풍축제', '대구', '동구', '2026-10-30', '2026-11-01'), ev('data_fest', '팔공산 단풍축제', '대구', '동구', '2026-10-30', '2026-11-01'),
+    ev('data_event', '유니버설발레단', '경기', '평택시', '2026-11-20', '2026-11-20'), ev('data_event', '유니버설발레단', '경기', '평택시', '2026-11-21', '2026-11-21'),
+    ev('seoul', '[A도서관] 그림책 원화전', '서울', '마포구', '2026-11-01', '2026-11-30'), ev('seoul', '[A도서관] 그림책 원화전', '서울', '은평구', '2026-11-01', '2026-11-30'),
+    ev('seoul', '2026 신년 해맞이', '서울', '마포구', '2026-01-01', '2026-01-01'), ev('seoul', '2027 신년 해맞이', '서울', '마포구', '2027-01-01', '2027-01-01')]);
+  const ballet = D.find(e => e.title === '유니버설발레단');
+  if (D.length !== 7 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
+  const total = T.length + K.length + G.length + 4 + 1;
+  console.log(bad ? `자가 점검 실패 ${bad}건` : `자가 점검 ${total}건 모두 통과 (나이 읽기 ${T.length})`);
   process.exit(bad ? 1 : 0);
 }
 main().then(code => process.exit(code)).catch(e => { console.error(e); process.exit(1); });
