@@ -2346,7 +2346,8 @@ function setSex(s){ child.sex=s; save(); render(); }
 
 
 /* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝 */
-const WHATS_NEW={v:"v30",items:[
+const WHATS_NEW={v:"v31",items:[
+ ["🎪 주말 나들이","놀이 탭 맨 위 '주말 나들이'를 누르면 고른 지역의 공연·전시·체험을 아이 개월 수에 맞춰 보여 줘요. 목록은 월·목 아침마다 새로 모아요.","events"],
  ["📤 하루 요약에 쓴 글이 다 들어가요","요약이 기록을 80자에서 자르던 것을 고쳤어요. «오늘 뭘 해줬나요»와 «생각나는 것» 칸도 함께 들어가고, 놀이 한 줄에는 어느 놀이였는지 붙어요. 지난 날짜는 달력에서 다시 보내면 온전한 글로 나와요.",""],
  ["🧸 만 6세 전까지 놀이 426개","9~35개월은 구간마다 영역별 놀이가 3개에서 8개로 늘었고, 36~71개월(만 3~5세) 구간 6개가 새로 생겼어요. 모두 미국 CDC 공식 이정표·활동 팁이 출처예요.","plays"],
  ["🔁 같은 놀이 덜 반복","«오늘 해볼 놀이»는 가장 오래 안 본 놀이부터 골라요. 구간의 놀이를 한 바퀴 다 돌기 전에는 같은 놀이가 다시 나오지 않아요.",""],
@@ -2611,7 +2612,7 @@ function vEvents(){
     h+='<button class="sec" style="margin-bottom:8px" onclick="evShareAll()">📤 목록 보내기</button>';
     const show=fold&&!evMore?top:L;
     show.slice(0,80).forEach(e=>{ h+=evItem(e); });
-    if(fold) h+='<button class="ghost" style="width:100%;margin-bottom:8px" onclick="evMore=!evMore;render()" aria-expanded="'+(evMore?'true':'false')+'">'+(evMore?'누구나 갈 수 있는 전시·공연 접기':'누구나 갈 수 있는 전시·공연 '+rest.length+'개 더 보기')+'</button>';
+    if(fold) h+='<button class="ghost" style="width:100%;margin-bottom:8px" onclick="evMore=!evMore;render()" aria-expanded="'+(evMore?'true':'false')+'">'+(evMore?'누구나 갈 수 있는 행사 접기':'누구나 갈 수 있는 행사 '+rest.length+'개 더 보기')+'</button>';
     if(show.length>80) h+='<div class="small" style="text-align:center">80개까지만 보여요. 기간이나 지역을 좁혀 보세요.</div>';
   }
   return h+evFoot(L.length>0);
