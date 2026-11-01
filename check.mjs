@@ -172,7 +172,7 @@ const BASE = 'http://localhost:8123/index.html';
 const launchOpts = {args:['--no-sandbox']};
 if (process.env.PW_CHROME) launchOpts.executablePath = process.env.PW_CHROME;
 const browser = await chromium.launch(launchOpts);
-const VIEWS = ['home','plays','food','log','sleep','er','moon','map','vax','backup','summary','settings'];
+const VIEWS = ['home','plays','food','log','sleep','er','moon','events','map','vax','backup','summary','settings'];
 const CHILD = JSON.stringify({birth:'2025-12-25',due:null,domain:'인지',reason:'play',name:'아기'});
 
 async function fresh(opts={}) {
@@ -183,6 +183,39 @@ async function fresh(opts={}) {
   await page.evaluate(c=>localStorage.setItem('siwoo.child', c), CHILD);
   await page.reload(); await page.waitForTimeout(500);
   return {ctx, page, errs};
+}
+
+/* 1-☆. 행사 목록 파일(assets/events.json) — 자동 작업이 만든 자료가 앱이 읽을 수 있는 꼴인지. 비어 있어도 되지만 깨져 있으면 안 된다.
+   아이 앱이므로: 링크는 http(s)만, 글에 HTML 없음, 만 7세(84개월) 이상 전용 행사 없음, 지난 행사는 일주일 넘게 남아 있지 않음 */
+{
+  const f = path.join(ROOT, 'assets', 'events.json');
+  if (!fs.existsSync(f)) bad('행사 목록 파일', 'assets/events.json 이 없다 — 빈 파일({"events":[]})이라도 있어야 앱이 404를 만나지 않는다');
+  else {
+    let d = null, err = '';
+    try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { err = 'JSON 깨짐: ' + e.message; }
+    if (!d || !Array.isArray(d.events)) bad('행사 목록 파일', err || 'events 배열이 없다');
+    else {
+      const probs = [];
+      const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+      const SIDO = ['서울','경기','인천','부산','대구','광주','대전','울산','세종','강원','충북','충남','전북','전남','경북','경남','제주'];
+      d.events.forEach((e, i) => {
+        const tag = '#' + i + ' ' + String(e.title || '').slice(0, 20);
+        if (typeof e.title !== 'string' || !e.title.trim()) probs.push(tag + ' 제목 없음');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(e.start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(e.end || '')) probs.push(tag + ' 날짜 꼴');
+        else if (e.end < weekAgo) probs.push(tag + ' 지난 행사(' + e.end + ')');
+        if (e.url != null && !/^https?:\/\/[^\s"'<>]+$/.test(e.url)) probs.push(tag + ' 링크 꼴');
+        if (e.img != null && !/^https?:\/\//.test(e.img)) probs.push(tag + ' 그림 링크 꼴');
+        if (/<[a-z!\/]/i.test([e.title, e.place, e.ageText, e.fee].join(' '))) probs.push(tag + ' 글에 HTML');
+        if (e.ageMin != null && (typeof e.ageMin !== 'number' || e.ageMin >= 84)) probs.push(tag + ' 연령 하한 ' + e.ageMin);
+        if (e.ageMax != null && typeof e.ageMax !== 'number') probs.push(tag + ' 연령 상한 꼴');
+        if (e.sido != null && !SIDO.includes(e.sido)) probs.push(tag + ' 시도 이름 ' + e.sido);
+        if (!['seoul','data_event','data_fest','kopis'].includes(e.src)) probs.push(tag + ' 출처 ' + e.src);
+      });
+      if (JSON.stringify(d).length > 3_000_000) probs.push('파일이 3MB를 넘음');
+      probs.length ? bad('행사 목록 파일', probs.length + '건: ' + probs.slice(0, 4).join(' / '))
+        : ok('행사 목록 파일 — ' + d.events.length + '건' + (d.updated ? ' (' + d.updated + ' 기준)' : ' (아직 비어 있음)') + ' · 링크 http(s)만 · HTML 없음 · 만 7세 이상 전용 없음');
+    }
+  }
 }
 
 /* 1-★. 달빛어린이병원 데이터 — 개수·좌표 범위·실시간 문구 금지 */
@@ -507,6 +540,53 @@ try {
     : ok('하루 요약 — 80자 넘는 글도 끝까지, 자극→반응→생각 세 칸, 생각만 적은 기록, 놀이 한 줄의 놀이 이름까지 다 들어감');
   await ctx.close();
 } catch(e) { bad('하루 요약이 쓴 글을 자르거나 뺌', '검사 중단: '+String(e.message).split('\n')[0]); }
+
+/* 2-5h. «이번 주말 어디 갈까» — 지어낸 행사 몇 개를 넣어 거르기가 맞는지. 아이 10개월·인천 기준:
+   주말에 열리는 인천 전연령 행사는 나오고, 36개월 이상 행사·다른 지역 행사·지난 행사는 빠지고, «나이 맞는 것만»을 끄면 36개월 행사가 나온다.
+   네트워크 없이(목록을 못 받은 상태) 홈·행사 화면이 오류 없이 그려지는지도 본다. (공개 저장소라 행사 이름은 전부 «예시») */
+try {
+  const {ctx,page,errs} = await fresh();
+  page.setDefaultTimeout(4000);
+  await page.route('**/assets/events.json*', r => r.abort());          /* 받아오기 실패 상황 */
+  const offline = await page.evaluate(async ()=>{
+    child.birth = addDays(todayStr(), -305); save();                       /* 생후 10개월쯤 */
+    go('home'); const home1 = document.querySelector('main').innerText;
+    go('events'); const ev1 = document.querySelector('main').innerText;
+    return { homeHasCard: /이번 주말 어디 갈까/.test(home1), evScreen: /지역/.test(ev1) };
+  });
+  const probs = [];
+  if (offline.homeHasCard) probs.push('목록이 없는데 홈에 행사 카드가 떴다');
+  if (!offline.evScreen) probs.push('행사 화면이 안 그려짐');
+  const r = await page.evaluate(()=>{
+    const t = todayStr(); const [sat, sun] = evWeekend();
+    const mk = (id, title, sido, start, end, ageMin, ageMax, free) => ({ id, src:'seoul', title, place:'예시 장소', sido, gu:null, start, end, ageMin, ageMax, ageText: ageMin==null?null:(ageMin+'개월 이상'), free, fee:null, url:'https://example.com/'+id, img:null, kind:'체험' });
+    evData = { updated: t, window:[t, addDays(t, 60)], count: 6, sources:{seoul:{ok:true,n:6}}, events: [
+      mk('a', '예시 인천 전연령 주말 행사', '인천', sat, sun, 0, null, true),
+      mk('b', '예시 인천 36개월 이상 행사', '인천', sat, sun, 36, null, false),
+      mk('c', '예시 서울 전연령 주말 행사', '서울', sat, sun, 0, null, true),
+      mk('d', '예시 인천 지난 행사', '인천', addDays(t, -20), addDays(t, -10), 0, null, true),
+      mk('e', '예시 인천 3주 뒤 행사', '인천', addDays(t, 20), addDays(t, 21), 0, null, null),
+      mk('f', '예시 인천 연령 표기 없음 주말 행사', '인천', sat, sun, null, null, null),
+    ] };
+    evPref.at = Date.now(); evPref.regions = ['인천']; evPref.span = 'wk'; evPref.age = true; evPref.free = false; evSavePref();
+    const names = L => L.map(e => e.id).join('');
+    const wk = names(evList('wk')), wkNoAge = (evPref.age = false, names(evList('wk'))), m1 = (evPref.age = true, names(evList('1m')));
+    evPref.free = true; const free = names(evList('wk')); evPref.free = false;
+    go('home'); const home = document.querySelector('main').innerText;
+    go('events'); const evs = document.querySelector('main').innerText;
+    return { wk, wkNoAge, m1, free, homeCard: /이번 주말 어디 갈까[\s\S]*예시 인천 전연령 주말 행사/.test(home), listShown: /예시 인천 전연령 주말 행사/.test(evs) && !/예시 서울 전연령/.test(evs), hasShare: /이 목록 보내기/.test(evs) };
+  });
+  if (r.wk !== 'af') probs.push('주말·인천·10개월 거르기 ' + JSON.stringify(r.wk) + ' (기대 af)');
+  if (r.wkNoAge !== 'abf') probs.push('나이 거르기 끄면 ' + JSON.stringify(r.wkNoAge) + ' (기대 abf)');
+  if (r.m1 !== 'afe' && r.m1 !== 'aef') probs.push('한 달 안 ' + JSON.stringify(r.m1) + ' (기대 a·f·e)');
+  if (r.free !== 'a') probs.push('무료만 ' + JSON.stringify(r.free) + ' (기대 a)');
+  if (!r.homeCard) probs.push('홈 카드에 주말 행사가 안 보임');
+  if (!r.listShown) probs.push('행사 화면 목록이 조건대로 안 나옴');
+  if (!r.hasShare) probs.push('공유 단추 없음');
+  (probs.length || errs.length) ? bad('«이번 주말 어디 갈까» 거르기 이상', probs.concat(errs.slice(0,2)).join(' / '))
+    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 목록 없을 땐 홈 카드 없음, 오류 0');
+  await ctx.close();
+} catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
