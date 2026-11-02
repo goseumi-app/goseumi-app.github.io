@@ -239,11 +239,18 @@ function mockResponse(url, as) {
     const id = (url.match(/contentId=(\d+)/) || [])[1];
     return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 10, pageNo: 1, totalCount: 1, items: { item: [{ contentid: id, homepage: id === '900004' ? '<a href="http://example.com/kimjang" target="_blank">홈페이지 바로가기</a>' : '' }] } } } };
   }
+  if (url.includes('kopis.or.kr/openApi/restful/prfplc/')) {
+    return `<?xml version="1.0"?><dbs><db><mt10id>FC000002</mt10id><fcltynm>예시 빛고을극장</fcltynm><adres>광주광역시 북구 예시로 9</adres></db></dbs>`;
+  }
   if (url.includes('kopis.or.kr/openApi/restful/pblprfr/')) {
-    return `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfage>만 24개월 이상</prfage><pcseguidance>전석 20,000원</pcseguidance><relates><relate><relatenm>예시 예매처</relatenm><relateurl>https://example.com/ticket</relateurl></relate></relates></db></dbs>`;
+    const id = (url.match(/pblprfr\/(PF\d+)/) || [])[1];
+    return id === 'PF000002'
+      ? `<?xml version="1.0"?><dbs><db><mt20id>PF000002</mt20id><mt10id>FC000002</mt10id><prfnm>예시 가족 인형극 빛고을</prfnm><prfage>만 3세 이상</prfage><pcseguidance>전석 15,000원</pcseguidance><area>전남광주통합특별시</area></db></dbs>`
+      : `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfage>만 24개월 이상</prfage><pcseguidance>전석 20,000원</pcseguidance><relates><relate><relatenm>예시 예매처</relatenm><relateurl>https://example.com/ticket</relateurl></relate></relates></db></dbs>`;
   }
   if (url.includes('kopis.or.kr/openApi/restful/pblprfr')) {
-    return `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfpdfrom>${d(9).replace(/-/g, '.')}</prfpdfrom><prfpdto>${d(9).replace(/-/g, '.')}</prfpdto><fcltynm>예시아트센터</fcltynm><poster>https://example.com/p.jpg</poster><area>인천광역시</area><genrenm>서양음악(클래식)</genrenm><prfstate>공연예정</prfstate></db></dbs>`;
+    const dd = n => d(n).replace(/-/g, '.');
+    return `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfpdfrom>${dd(9)}</prfpdfrom><prfpdto>${dd(9)}</prfpdto><fcltynm>예시아트센터</fcltynm><poster>https://example.com/p.jpg</poster><area>인천광역시</area><genrenm>서양음악(클래식)</genrenm><prfstate>공연예정</prfstate></db><db><mt20id>PF000002</mt20id><prfnm>예시 가족 인형극 빛고을</prfnm><prfpdfrom>${dd(10)}</prfpdfrom><prfpdto>${dd(11)}</prfpdto><fcltynm>예시 빛고을극장</fcltynm><poster></poster><area>전남광주통합특별시</area><genrenm>연극</genrenm><prfstate>공연예정</prfstate></db></dbs>`;
   }
   throw new Error('가짜 응답 없음: ' + url);
 }
@@ -440,22 +447,41 @@ function xmlRecords(xml, tag) {
   }
   return recs;
 }
+/* KOPIS 오류 응답 — <returncode>가 00이 아니거나 <errmsg>가 있으면 (오류도 <db> 안에 담겨 올 수 있다) */
+function kopisErr(xml) {
+  const code = String(xml).match(/<returncode>\s*(\d+)\s*<\/returncode>/i)?.[1], msg = String(xml).match(/<errmsg>([\s\S]*?)<\/errmsg>/i)?.[1];
+  return (code && !/^0+$/.test(code)) || msg ? `KOPIS ${code || ''} ${strip(msg || String(xml).slice(0, 160))}`.replace(/\s+/g, ' ').trim() : null;
+}
 async function fetchKopis(key, log) {
   const out = []; const list = [];
   const sd = FROM.replace(/-/g, ''), ed = TO.replace(/-/g, '');
   for (let p = 1; p <= 20; p++) {
     const xml = await getJSON(`https://www.kopis.or.kr/openApi/restful/pblprfr?service=${encodeURIComponent(key)}&stdate=${sd}&eddate=${ed}&cpage=${p}&rows=100&kidstate=Y`, { as: 'text' });
-    if (/<returncode>\s*\d{2,}|<errmsg>/i.test(xml) && !/<db>/.test(xml)) throw new Error('KOPIS: ' + (xml.match(/<errmsg>([\s\S]*?)<\/errmsg>/i)?.[1] || xml.slice(0, 160)));
-    const recs = xmlRecords(xml, 'db');
+    const err = kopisErr(xml); if (err) throw new Error(err);     /* 열쇠 오류도 <db> 안에 담겨 올 수 있다 */
+    const recs = xmlRecords(xml, 'db').filter(r => r.mt20id);
     list.push(...recs);
     log(`KOPIS 목록 ${p}쪽: ${recs.length}`);
     if (recs.length < 100) break;
     await sleep(300);
   }
-  const cap = Math.min(list.length, 600); let i = 0;
+  /* 기간·이름으로 먼저 거르고 남은 것만 상세를 묻는다(1초 10회 제한) */
+  const cand = list.map(r => ({ r, start: normDate(r.prfpdfrom), end: normDate(r.prfpdto), title: strip(r.prfnm) }))
+    .filter(c => inWindow(c.start, c.end) && c.title && !NO_WORDS.test(c.title) && !notForKids(c.title, ''));
+  const cap = Math.min(cand.length, 600); let i = 0; const place = new Map();
+  /* 광주·전남 통합(«전남광주통합특별시»)으로 시도만 와서는 광주인지 전남인지 모른다 — 공연장 주소로 가린다 */
+  async function venueAddr(id) {
+    if (!id) return null;
+    if (!place.has(id)) {
+      let a = null;
+      try { a = strip(xmlRecords(await getJSON(`https://www.kopis.or.kr/openApi/restful/prfplc/${encodeURIComponent(id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000 }), 'db')[0]?.adres) || null; }
+      catch (e) { log(`KOPIS 공연장 실패 ${id}: ${e.message}`); }
+      place.set(id, a); await sleep(300);
+    }
+    return place.get(id);
+  }
   async function worker() {
     while (i < cap) {
-      const r = list[i++];
+      const { r, start, end, title } = cand[i++];
       let det = {};
       try {
         const xml = await getJSON(`https://www.kopis.or.kr/openApi/restful/pblprfr/${encodeURIComponent(r.mt20id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000 });
@@ -463,25 +489,27 @@ async function fetchKopis(key, log) {
         const rel = xmlRecords(xml, 'relate');
         det._url = rel.map(x => safeUrl(x.relateurl)).find(Boolean) || null;
       } catch (e) { log(`KOPIS 상세 실패 ${r.mt20id}: ${e.message}`); }
-      const start = normDate(r.prfpdfrom), end = normDate(r.prfpdto);
-      if (!inWindow(start, end)) continue;
-      const title = strip(r.prfnm);
-      if (NO_WORDS.test(title) || notForKids(title, '')) continue;
+      await sleep(300);
       const age = parseAge(det.prfage);
       if (age.min === 999) continue;
       const feeT = strip(det.pcseguidance);
       const free = isFree(feeT);
+      let sido = sidoOf(r.area, det.area), gu = null;
+      if (sido === '전남' && /광주/.test(strip(r.area) + strip(det.area))) {
+        const addr = await venueAddr(det.mt10id);
+        if (addr) { gu = guOf(addr); sido = fixSido(sidoOf(addr) || sido, gu); }
+      }
       out.push({
         src: 'kopis', id: 'kopis:' + strip(r.mt20id),
-        title: cut(title, 70), place: cut(r.fcltynm, 40) || null, sido: sidoOf(r.area, det.area), gu: null,
+        title: cut(title, 70), place: cut(r.fcltynm, 40) || null, sido, gu,
         start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
         free, fee: free === false ? cut(feeT, 40) : null,
         url: det._url || null, img: safeUrl(r.poster), kind: kindOf(strip(r.genrenm) + ' ' + title), kid: Math.max(2, kidScore(title, age)),
       });
-      await sleep(300);
     }
   }
   await Promise.all([worker(), worker()]);   /* KOPIS 안내: 1초에 10회를 넘기면 서비스가 멈춘다 — 둘이서 0.3초씩 쉬어 초당 7회 아래 */
+  log(`KOPIS: 목록 ${list.length}, 기간·이름 통과 ${cand.length}, 상세 ${cap}, 남김 ${out.length}`);
   return out;
 }
 
@@ -607,6 +635,7 @@ if (process.env.EV_SELFTEST) {
   if (!placeholderRange('2026-01-01', '2026-12-31') || placeholderRange('2026-01-02', '2026-12-31') || placeholderRange('2026-01-01', '2027-12-31')) { bad++; console.log('✗ 날짜 채움'); }
   if (normDate('2626-08-08') !== null || normDate('2029-12-30') !== '2029-12-30') { bad++; console.log('✗ 날짜 오타'); }
   if (firstUrl('<a href="https://example.com/a?b=1" target="_blank">바로가기</a>') !== 'https://example.com/a?b=1' || firstUrl('www.example.com/x') !== 'https://www.example.com/x' || firstUrl('홈페이지 없음') !== null) { bad++; console.log('✗ 홈페이지 주소 뽑기'); }
+  if (!kopisErr('<dbs><db><returncode>02</returncode><errmsg>SERVICE KEY IS NOT REGISTERED ERROR.</errmsg></db></dbs>') || kopisErr('<dbs><db><mt20id>PF1</mt20id><prfnm>예시</prfnm></db></dbs>') !== null) { bad++; console.log('✗ KOPIS 오류 읽기'); }
   if (fixSido('전남', '동구') !== '광주' || fixSido('전남', '순천시') !== '전남' || fixSido('충남', '유성구') !== '대전' || fixSido('경북', '남구') !== '경북') { bad++; console.log('✗ 시도'); }
   const ev = (src, title, sido, gu, start, end) => ({ src, title, sido, gu, start, end, url: null, ageMin: 0, ageMax: null, kid: 1 });
   const D = dedupe([ev('data_fest', '구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'), ev('data_fest', '2026 구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'),
@@ -617,7 +646,7 @@ if (process.env.EV_SELFTEST) {
     ev('seoul', '[노원문화재단] 2026 노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08'), ev('tour', '노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08')]);
   const ballet = D.find(e => e.title === '유니버설발레단');
   if (D.length !== 8 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
-  const total = T.length + K.length + G.length + 5 + 1;
+  const total = T.length + K.length + G.length + 6 + 1;
   console.log(bad ? `자가 점검 실패 ${bad}건` : `자가 점검 ${total}건 모두 통과 (나이 읽기 ${T.length})`);
   process.exit(bad ? 1 : 0);
 }
