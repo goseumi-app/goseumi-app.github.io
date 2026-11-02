@@ -215,6 +215,21 @@ function mockResponse(url, as) {
       { fstvlNm: '예시 맥주 축제', opar: '예시광장', fstvlCo: '맥주', fstvlStartDate: d(1), fstvlEndDate: d(2), homepageUrl: 'https://example.com/beer', rdnmadr: '서울특별시 송파구 예시로 4' },
     ] } } };
   }
+  if (url.includes('/KorService2/searchFestival2')) {
+    const ymd = n => d(n).replace(/-/g, '');
+    return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 500, pageNo: 1, totalCount: 3, items: { item: [
+      { title: '예시 어린이 빛 축제', addr1: '인천광역시 연수구 예시로 5', contentid: '900001', contenttypeid: '15', eventstartdate: ymd(2), eventenddate: ymd(20), firstimage: 'http://tong.visitkorea.or.kr/cms/resource/example.jpg' },
+      { title: '예시 와인 페스티벌', addr1: '경기도 가평군 예시로 6', contentid: '900002', contenttypeid: '15', eventstartdate: ymd(3), eventenddate: ymd(4), firstimage: '' },
+      { title: '예시 지난 축제', addr1: '경기도 수원시 팔달구 예시로 7', contentid: '900003', contenttypeid: '15', eventstartdate: ymd(-40), eventenddate: ymd(-30), firstimage: '' },
+    ] } } } };
+  }
+  if (url.includes('/KorService2/detailIntro2')) {
+    const id = (url.match(/contentId=(\d+)/) || [])[1];
+    const item = id === '900001'
+      ? { contentid: id, agelimit: '전연령', usetimefestival: '무료', eventplace: '예시 공원', program: '빛 터널, 어린이 만들기 체험', eventhomepage: '<a href="https://example.com/light" target="_blank" title="새창">https://example.com/light</a>' }
+      : { contentid: id, agelimit: '', usetimefestival: '', eventhomepage: '' };
+    return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 10, pageNo: 1, totalCount: 1, items: { item: [item] } } } };
+  }
   if (url.includes('kopis.or.kr/openApi/restful/pblprfr/')) {
     return `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfage>만 24개월 이상</prfage><pcseguidance>전석 20,000원</pcseguidance><relates><relate><relatenm>예시 예매처</relatenm><relateurl>https://example.com/ticket</relateurl></relate></relates></db></dbs>`;
   }
@@ -325,6 +340,76 @@ async function pagedDataGo(base, key, log, label, mapRow) {
   return out;
 }
 
+/* ── 4) 한국관광공사 국문 관광정보(KorService2) — 행사정보 목록 + 소개정보(관람 연령·요금·홈페이지) ──
+   공공데이터포털 열쇠(DATA_GO_KR_KEY)를 같이 쓴다. 개발계정은 기능마다 하루 1,000회 — 소개정보는 한 번에 TOUR_DETAIL_CAP건까지만. */
+const TOUR = 'https://apis.data.go.kr/B551011/KorService2';
+const TOUR_DETAIL_CAP = 450;
+async function tourGet(op, params, key) {
+  const qs = Object.entries({ MobileOS: 'ETC', MobileApp: 'goseumi', _type: 'json', ...params }).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  const j = await getJSON(`${TOUR}/${op}?serviceKey=${dataKeyParam(key)}&${qs}`);
+  const root = j?.response || j; const hdr = root?.header, body = root?.body;
+  if (!hdr) throw new Error(`관광공사 ${op}: 응답 형식 다름 ${JSON.stringify(j).slice(0, 160)}`);
+  if (hdr.resultCode != null && !/^0+$/.test(String(hdr.resultCode))) throw new Error(`관광공사 ${op}: ${hdr.resultCode} ${hdr.resultMsg}`);
+  const it = body?.items?.item; const items = Array.isArray(it) ? it : (it ? [it] : []);
+  return { total: Number(body?.totalCount || 0), items };
+}
+/* 홈페이지 칸은 <a href="…">…</a> 꼴로 올 때가 많다 — 첫 주소만 */
+function firstUrl(raw) {
+  const m = String(raw || '').match(/(?:https?:\/\/|www\.)[^\s"'<>]+/i);
+  return m ? safeUrl(m[0].replace(/[),.]+$/, '')) : null;
+}
+async function fetchTour(key, log) {
+  const list = []; const ROWS = 500;
+  const since = addDays(FROM, -90).replace(/-/g, '');            /* 석 달 전부터 — 이미 시작해 진행 중인 축제도 받게(뒤에서 기간으로 다시 거름) */
+  for (let page = 1; page <= 20; page++) {
+    const { total, items } = await tourGet('searchFestival2', { eventStartDate: since, numOfRows: ROWS, pageNo: page, arrange: 'A' }, key);
+    list.push(...items);
+    log(`관광공사 행사 ${page}쪽: 받음 ${items.length}, 누적 ${list.length} / 전체 ${total}`);
+    if (page * ROWS >= total || !items.length) break;
+    await sleep(300);
+  }
+  const cand = [];
+  for (const r of list) {
+    const start = normDate(r.eventstartdate), end = normDate(r.eventenddate);
+    if (!inWindow(start, end) || placeholderRange(start, end)) continue;
+    const title = strip(r.title);
+    if (!title || NO_WORDS.test(title) || notForKids(title, '')) continue;
+    cand.push({ r, title, start, end });
+  }
+  const out = []; let i = 0, asked = 0, failed = 0;
+  async function worker() {
+    while (i < cand.length) {
+      const { r, title, start, end } = cand[i++];
+      let d = {};
+      if (asked < TOUR_DETAIL_CAP) {
+        asked++;
+        try { d = (await tourGet('detailIntro2', { contentId: r.contentid, contentTypeId: r.contenttypeid || 15 }, key)).items[0] || {}; }
+        catch (e) { failed++; if (failed <= 3) log(`관광공사 소개정보 실패 ${r.contentid}: ${e.message}`); }
+        await sleep(100);
+      }
+      const ageRaw = strip(d.agelimit), prog = strip(d.program);
+      if (NO_WORDS.test(prog.slice(0, 200))) continue;
+      let age = ageRaw ? parseAge(ageRaw) : { min: 0, max: null, text: '축제·행사 · 연령 제한 표기 없음' };
+      if (age.min === 999) continue;
+      const kid = Math.max(kidScore(title, age), STRONG_KID.test(title + ' ' + prog.slice(0, 120)) ? 2 : 0);
+      if (kid === 0 && !KID_WORDS.test(title)) continue;
+      const feeT = strip(d.usetimefestival), free = isFree(feeT);
+      const addr = strip(r.addr1), gu = guOf(addr), k = kindOf(title + ' ' + prog.slice(0, 60));
+      out.push({
+        src: 'tour', id: 'tour:' + strip(r.contentid),
+        title: cut(title, 70), place: cut(strip(d.eventplace) || addr, 40) || null, sido: fixSido(sidoOf(addr), gu), gu,
+        start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
+        free, fee: free === false ? cut(feeT, 40) || null : null,
+        url: firstUrl(d.eventhomepage), img: safeUrl(r.firstimage), kind: k === '기타' ? '축제' : k, kid,
+      });
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  log(`관광공사: 기간 안 ${cand.length}건, 소개정보 ${asked}번 물음(실패 ${failed}), 남김 ${out.length}`);
+  if (failed) out.note = `소개정보(연령·요금·홈페이지) ${asked}건 중 ${failed}건 못 받음 — 그 행사는 연령 표기 없음으로`;
+  return out;
+}
+
 /* ── 3) KOPIS 아동 공연 ── */
 function xmlRecords(xml, tag) {
   const recs = []; const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'g'); let m;
@@ -373,10 +458,10 @@ async function fetchKopis(key, log) {
         free, fee: free === false ? cut(feeT, 40) : null,
         url: det._url || null, img: safeUrl(r.poster), kind: kindOf(strip(r.genrenm) + ' ' + title), kid: Math.max(2, kidScore(title, age)),
       });
-      await sleep(120);
+      await sleep(300);
     }
   }
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker()]);   /* KOPIS 안내: 1초에 10회를 넘기면 서비스가 멈춘다 — 둘이서 0.3초씩 쉬어 초당 7회 아래 */
   return out;
 }
 
@@ -399,7 +484,7 @@ function normTitle(t) {
     .replace(/[^0-9a-z가-힣]/g, '');
 }
 function dedupe(events) {
-  const prio = { kopis: 0, seoul: 1, data_event: 2, data_fest: 3 };
+  const prio = { kopis: 0, seoul: 1, tour: 2, data_event: 3, data_fest: 4 };   /* 관광공사는 홈페이지·사진이 있어 표준데이터보다 먼저 */
   events.sort((a, b) => (prio[a.src] - prio[b.src]) || (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   const groups = new Map(); const out = [];
   for (const e of events) {
@@ -430,9 +515,9 @@ async function main() {
     summary({ skipped: true }); return 0;
   }
   const status = {}; let all = [];
-  for (const [name, fn, key] of [['seoul', fetchSeoul, KEYS.seoul], ['data', fetchDataGo, KEYS.data], ['kopis', fetchKopis, KEYS.kopis]]) {
+  for (const [name, fn, key] of [['seoul', fetchSeoul, KEYS.seoul], ['data', fetchDataGo, KEYS.data], ['tour', fetchTour, KEYS.data], ['kopis', fetchKopis, KEYS.kopis]]) {
     if (!key) { status[name] = { ok: false, n: 0, note: '열쇠 없음 — 건너뜀' }; continue; }
-    try { const a = await fn(key, log); status[name] = { ok: true, n: a.length }; all.push(...a); }
+    try { const a = await fn(key, log); status[name] = { ok: true, n: a.length, ...(a.note ? { note: a.note } : {}) }; all.push(...a); }
     catch (e) { status[name] = { ok: false, n: 0, note: cut(e.message, 200) }; log(`${name} 실패: ${e.message}`); }
   }
   const okCount = Object.values(status).filter(s => s.ok).length;
@@ -457,7 +542,7 @@ function summary({ status = {}, data, skipped, failed }) {
   let md = '## 행사 목록 만들기\n\n';
   if (skipped) { md += '열쇠가 없어 건너뜀 (SEOUL_KEY / DATA_GO_KR_KEY / KOPIS_KEY 중 하나라도 저장소 Secrets에 넣으면 돕니다).\n'; fs.appendFileSync(f, md); return; }
   md += '| 자료 | 결과 | 건수 | 메모 |\n|---|---|---|---|\n';
-  for (const [k, v] of Object.entries(status)) md += `| ${{ seoul: '서울시 문화행사', data: '공공데이터포털 표준데이터', kopis: 'KOPIS 아동 공연' }[k]} | ${v.ok ? '✅' : '⚠️'} | ${v.n} | ${v.note || ''} |\n`;
+  for (const [k, v] of Object.entries(status)) md += `| ${{ seoul: '서울시 문화행사', data: '공공데이터포털 표준데이터', tour: '한국관광공사 축제·행사', kopis: 'KOPIS 아동 공연' }[k]} | ${v.ok ? '✅' : '⚠️'} | ${v.n} | ${v.note || ''} |\n`;
   if (failed) { md += '\n**받아온 자료가 없어 옛 파일을 그대로 두었습니다.**\n'; fs.appendFileSync(f, md); return; }
   md += `\n**${data.count}건** · 기간 ${data.window[0]} ~ ${data.window[1]}\n\n지역별: ` + Object.entries(data.bySido).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ') + '\n\n';
   const ages = { 표기: data.events.filter(e => e.ageMin != null).length, 미표기: data.events.filter(e => e.ageMin == null).length };
@@ -499,6 +584,7 @@ if (process.env.EV_SELFTEST) {
   for (const [title, want] of G) if (genericTitle(title) !== want) { bad++; console.log('✗ 이름', title, '→', !want); }
   if (!placeholderRange('2026-01-01', '2026-12-31') || placeholderRange('2026-01-02', '2026-12-31') || placeholderRange('2026-01-01', '2027-12-31')) { bad++; console.log('✗ 날짜 채움'); }
   if (normDate('2626-08-08') !== null || normDate('2029-12-30') !== '2029-12-30') { bad++; console.log('✗ 날짜 오타'); }
+  if (firstUrl('<a href="https://example.com/a?b=1" target="_blank">바로가기</a>') !== 'https://example.com/a?b=1' || firstUrl('www.example.com/x') !== 'https://www.example.com/x' || firstUrl('홈페이지 없음') !== null) { bad++; console.log('✗ 홈페이지 주소 뽑기'); }
   if (fixSido('전남', '동구') !== '광주' || fixSido('전남', '순천시') !== '전남' || fixSido('충남', '유성구') !== '대전' || fixSido('경북', '남구') !== '경북') { bad++; console.log('✗ 시도'); }
   const ev = (src, title, sido, gu, start, end) => ({ src, title, sido, gu, start, end, url: null, ageMin: 0, ageMax: null, kid: 1 });
   const D = dedupe([ev('data_fest', '구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'), ev('data_fest', '2026 구미라면축제', '경북', '구미시', '2026-11-06', '2026-11-08'),
@@ -508,7 +594,7 @@ if (process.env.EV_SELFTEST) {
     ev('seoul', '2026 신년 해맞이', '서울', '마포구', '2026-01-01', '2026-01-01'), ev('seoul', '2027 신년 해맞이', '서울', '마포구', '2027-01-01', '2027-01-01')]);
   const ballet = D.find(e => e.title === '유니버설발레단');
   if (D.length !== 7 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
-  const total = T.length + K.length + G.length + 4 + 1;
+  const total = T.length + K.length + G.length + 5 + 1;
   console.log(bad ? `자가 점검 실패 ${bad}건` : `자가 점검 ${total}건 모두 통과 (나이 읽기 ${T.length})`);
   process.exit(bad ? 1 : 0);
 }
