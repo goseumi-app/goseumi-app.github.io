@@ -80,6 +80,8 @@ function sidoOf(...cands) {
   }
   return null;
 }
+/* 법정동 시도 코드 → 시도 (관광공사 자료에 주소가 비어 있을 때) */
+const LDONG = { '11': '서울', '26': '부산', '27': '대구', '28': '인천', '29': '광주', '30': '대전', '31': '울산', '36': '세종', '41': '경기', '42': '강원', '51': '강원', '43': '충북', '44': '충남', '45': '전북', '52': '전북', '46': '전남', '47': '경북', '48': '경남', '50': '제주' };
 /* 전남·충남 주소에는 «구»가 바로 오지 않는다 — «전남 동구»는 광주, «충남 유성구»는 대전 (2026-11: 광주 금남로·양림동 축제가 «전남»으로 들어왔다) */
 function fixSido(sido, gu) {
   if (gu && /구$/.test(gu)) { if (sido === '전남') return '광주'; if (sido === '충남') return '대전'; }
@@ -104,6 +106,8 @@ function parseAge(raw) {
   /* 부모만 듣는 강연·모임(자녀를 둔 학부모, 양육자 대상) — 아이를 데려가는 나들이가 아니다. «함께·동반»이면 가족 행사로 본다 */
   if (/자녀를둔|양육하시는|양육하는|학부모대상|학부모및|학부모\d|부모교육/.test(t) && !/함께|동반|가족과|아이와/.test(t)) return set(999, null);
   if (/양육자|보호자/.test(t) && !/어린이|유아|영아|아기|아동|초등|해봄이|자녀와|아이와/.test(t) && !/함께|동반|가족/.test(t)) return set(999, null);   /* «어린이 및 양육자»는 가족 행사 */
+  /* «전 연령 (만 12세 이하 성인 동반)», «미취학 아동은 보호자 동반» — 나이 제한이 아니라 동반 조건 (관광공사 자료에 흔함) */
+  if (/(이하|미만|미취학|어린이|아동|유아)[^,.]{0,12}(보호자|성인|부모|어른)(동반|과함께|와함께)/.test(t)) return set(0, null);
   if (ADULT_RE.test(t) && !kid) return set(999, null);
   /* «청소년 이상 누구나»·«성인 누구나»·«누구나(성인 40명)»·«청년» — «누구나»보다 먼저 본다(2026-11 첫 자료에서 0개월로 잘못 읽었음) */
   if (!kid && /청소년이상|중학생이상|중학생부터|고등학생이상|고교생이상|성인누구나|성인\d|^성인|청년/.test(t)) return set(999, null);
@@ -144,7 +148,7 @@ const NO_WORDS = /맥주|와인|막걸리|소주|주류|전통주|칵테일|위�
 
 /* 아이를 데리고 가는 나들이가 아닌 것 — 2026-11 첫 서울 자료에서 북토크·강연·창업·아카데미·단체 교육·온라인 전시가 «누구나»로 섞여 들어왔다 */
 const STRONG_KID = /어린이|유아|영아|영유아|아기|베이비|키즈|kids|가족|패밀리|그림책|동화|인형극|동요|아이와|엄마|아빠|부모와|어린이집|유치원|꼬마|베베|핑크퐁|뽀로로|타요|로보카\s*폴리|콩순이|티니핑|브레드\s*이발소|슈퍼윙스|미니특공대|헬로\s*카봇|띠띠뽀|번개맨|코코몽|구름빵/i;
-const HARD_NO_TITLE = /시니어|어르신|중장년|직장인|창업|양성\s*과정|강사\s*(모집|양성)|할인\s*안내|단체\s*관람|학급\s*단체|단체\s*교육|온라인|찾아가는|교육생\s*모집|수강생\s*모집|일반교육\s*모집|졸업\s*(전시|작품)|아카데미|시민대학|정규\s*강좌|독서\s*토론|북\s*토크|작가\s*힙톡|초대석|미식\s*투어|운영\s*안내|휴관/i;
+const HARD_NO_TITLE = /시니어|어르신|중장년|직장인|창업|양성\s*과정|강사\s*(모집|양성)|할인\s*안내|단체\s*관람|학급\s*단체|단체\s*교육|온라인|찾아가는|교육생\s*모집|수강생\s*모집|일반교육\s*모집|졸업\s*(전시|작품)|아카데미|시민대학|정규\s*강좌|독서\s*토론|북\s*토크|작가\s*힙톡|초대석|미식\s*투어|운영\s*안내|휴관|그랜드\s*세일|판매전|뷰티|러닝|마라톤|런트립|허그런/i;
 const SOFT_NO_TITLE = /학부모|양육자|강연|특강|인문학|토크\s*콘서트|작가와의\s*(만남|대화)|창작\s*(클래스|트레이닝)|원데이\s*클래스|영화제|상영회|영화관/i;
 function notForKids(title, trgt) {
   if (HARD_NO_TITLE.test(title)) return true;
@@ -217,7 +221,8 @@ function mockResponse(url, as) {
   }
   if (url.includes('/KorService2/searchFestival2')) {
     const ymd = n => d(n).replace(/-/g, '');
-    return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 500, pageNo: 1, totalCount: 3, items: { item: [
+    return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 500, pageNo: 1, totalCount: 4, items: { item: [
+      { title: '예시 가족 김장 축제', addr1: '', lDongRegnCd: '28', contentid: '900004', contenttypeid: '15', eventstartdate: ymd(6), eventenddate: ymd(7), firstimage: '' },
       { title: '예시 어린이 빛 축제', addr1: '인천광역시 연수구 예시로 5', contentid: '900001', contenttypeid: '15', eventstartdate: ymd(2), eventenddate: ymd(20), firstimage: 'http://tong.visitkorea.or.kr/cms/resource/example.jpg' },
       { title: '예시 와인 페스티벌', addr1: '경기도 가평군 예시로 6', contentid: '900002', contenttypeid: '15', eventstartdate: ymd(3), eventenddate: ymd(4), firstimage: '' },
       { title: '예시 지난 축제', addr1: '경기도 수원시 팔달구 예시로 7', contentid: '900003', contenttypeid: '15', eventstartdate: ymd(-40), eventenddate: ymd(-30), firstimage: '' },
@@ -229,6 +234,10 @@ function mockResponse(url, as) {
       ? { contentid: id, agelimit: '전연령', usetimefestival: '무료', eventplace: '예시 공원', program: '빛 터널, 어린이 만들기 체험', eventhomepage: '<a href="https://example.com/light" target="_blank" title="새창">https://example.com/light</a>' }
       : { contentid: id, agelimit: '', usetimefestival: '', eventhomepage: '' };
     return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 10, pageNo: 1, totalCount: 1, items: { item: [item] } } } };
+  }
+  if (url.includes('/KorService2/detailCommon2')) {
+    const id = (url.match(/contentId=(\d+)/) || [])[1];
+    return { response: { header: { resultCode: '0000', resultMsg: 'OK' }, body: { numOfRows: 10, pageNo: 1, totalCount: 1, items: { item: [{ contentid: id, homepage: id === '900004' ? '<a href="http://example.com/kimjang" target="_blank">홈페이지 바로가기</a>' : '' }] } } } };
   }
   if (url.includes('kopis.or.kr/openApi/restful/pblprfr/')) {
     return `<?xml version="1.0"?><dbs><db><mt20id>PF000001</mt20id><prfnm>예시 아기 클래식 음악회</prfnm><prfage>만 24개월 이상</prfage><pcseguidance>전석 20,000원</pcseguidance><relates><relate><relatenm>예시 예매처</relatenm><relateurl>https://example.com/ticket</relateurl></relate></relates></db></dbs>`;
@@ -343,7 +352,7 @@ async function pagedDataGo(base, key, log, label, mapRow) {
 /* ── 4) 한국관광공사 국문 관광정보(KorService2) — 행사정보 목록 + 소개정보(관람 연령·요금·홈페이지) ──
    공공데이터포털 열쇠(DATA_GO_KR_KEY)를 같이 쓴다. 개발계정은 기능마다 하루 1,000회 — 소개정보는 한 번에 TOUR_DETAIL_CAP건까지만. */
 const TOUR = 'https://apis.data.go.kr/B551011/KorService2';
-const TOUR_DETAIL_CAP = 450;
+const TOUR_DETAIL_CAP = 450, TOUR_COMMON_CAP = 300;
 async function tourGet(op, params, key) {
   const qs = Object.entries({ MobileOS: 'ETC', MobileApp: 'goseumi', _type: 'json', ...params }).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
   const j = await getJSON(`${TOUR}/${op}?serviceKey=${dataKeyParam(key)}&${qs}`);
@@ -376,7 +385,7 @@ async function fetchTour(key, log) {
     if (!title || NO_WORDS.test(title) || notForKids(title, '')) continue;
     cand.push({ r, title, start, end });
   }
-  const out = []; let i = 0, asked = 0, failed = 0;
+  const out = []; let i = 0, asked = 0, failed = 0, commonAsked = 0, commonFailed = 0;
   async function worker() {
     while (i < cand.length) {
       const { r, title, start, end } = cand[i++];
@@ -394,19 +403,30 @@ async function fetchTour(key, log) {
       const kid = Math.max(kidScore(title, age), STRONG_KID.test(title + ' ' + prog.slice(0, 120)) ? 2 : 0);
       if (kid === 0 && !KID_WORDS.test(title)) continue;
       const feeT = strip(d.usetimefestival), free = isFree(feeT);
+      let url = firstUrl(d.eventhomepage);
+      if (!url && commonAsked < TOUR_COMMON_CAP) {                 /* 소개정보에 홈페이지가 없으면 공통정보의 홈페이지 */
+        commonAsked++;
+        try { url = firstUrl(((await tourGet('detailCommon2', { contentId: r.contentid }, key)).items[0] || {}).homepage); }
+        catch (e) { commonFailed++; if (commonFailed <= 3) log(`관광공사 공통정보 실패 ${r.contentid}: ${e.message}`); }
+        await sleep(100);
+      }
       const addr = strip(r.addr1), gu = guOf(addr), k = kindOf(title + ' ' + prog.slice(0, 60));
       out.push({
         src: 'tour', id: 'tour:' + strip(r.contentid),
-        title: cut(title, 70), place: cut(strip(d.eventplace) || addr, 40) || null, sido: fixSido(sidoOf(addr), gu), gu,
+        title: cut(title, 70), place: cut(strip(d.eventplace) || addr, 40) || null, sido: fixSido(sidoOf(addr, d.eventplace) || LDONG[String(r.lDongRegnCd || '').slice(0, 2)] || null, gu), gu,
         start, end, ageMin: age.min, ageMax: age.max, ageText: age.text,
         free, fee: free === false ? cut(feeT, 40) || null : null,
-        url: firstUrl(d.eventhomepage), img: safeUrl(r.firstimage), kind: k === '기타' ? '축제' : k, kid,
+        url, img: safeUrl(r.firstimage), kind: k === '기타' ? '축제' : k, kid,
       });
     }
   }
   await Promise.all([worker(), worker(), worker()]);
-  log(`관광공사: 기간 안 ${cand.length}건, 소개정보 ${asked}번 물음(실패 ${failed}), 남김 ${out.length}`);
-  if (failed) out.note = `소개정보(연령·요금·홈페이지) ${asked}건 중 ${failed}건 못 받음 — 그 행사는 연령 표기 없음으로`;
+  log(`관광공사: 기간 안 ${cand.length}건, 소개정보 ${asked}번(실패 ${failed}), 공통정보 ${commonAsked}번(실패 ${commonFailed}), 남김 ${out.length}, 링크 ${out.filter(e => e.url).length}`);
+  const notes = [];
+  if (failed) notes.push(`소개정보(연령·요금) ${asked}건 중 ${failed}건 못 받음 — 그 행사는 연령 표기 없음으로`);
+  if (commonFailed) notes.push(`공통정보(홈페이지) ${commonAsked}건 중 ${commonFailed}건 못 받음`);
+  notes.push(`링크 ${out.filter(e => e.url).length}/${out.length}`);
+  out.note = notes.join(' · ');
   return out;
 }
 
@@ -478,6 +498,7 @@ function hash(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charC
    2026-11 첫 전국 자료: «구미라면축제»와 «2026 구미라면축제», «청송사과축제» 두 건, 이틀 연달아 올린 같은 발레 공연 */
 function normTitle(t) {
   return String(t || '').toLowerCase()
+    .replace(/^\s*\[[^\]]*\]\s*/, '')                        /* 앞머리 [기관] — 서울 자료와 관광공사 자료가 같은 행사를 다르게 부름 */
     .replace(/\(\s*\d+\s*회차?\s*\)/g, '')
     .replace(/(19|20)\d{2}\s*년?/g, '')
     .replace(/제?\s*\d+\s*회(?!차)/g, '')
@@ -569,7 +590,8 @@ if (process.env.EV_SELFTEST) {
     ['6~7세 어린이 및 양육자 10팀',72,95],['초등1-6학년 해봄이와 양육자',72,143],['양육자 누구나',999,null],
     /* 2026-11-02 두 번째 손질 — «초등학생 이상»은 아이 대상이 아니다, 학년 범위, 원자료 오타 */
     ['초등학생 이상 관람가능',72,null],['초등학생',72,155],['초등학생 동반 가족',72,155],['초등학교 5~6학년',120,143],['초등생 (초등 4~6학년)',108,143],
-    ['해봄이로 등록한 초등학교 1-3학년 12명',72,107],['초등 1학년',72,83],['유아 및 초등학생',0,155],['전 연링 (프로그램 별 상이)',0,null],['누구',0,null]];
+    ['해봄이로 등록한 초등학교 1-3학년 12명',72,107],['초등 1학년',72,83],['유아 및 초등학생',0,155],['전 연링 (프로그램 별 상이)',0,null],['누구',0,null],
+    /* 관광공사 자료 */ ['전 연령 (만 12세 이하 성인 동반)',0,null],['미취학 아동은 보호자 동반',0,null],['초등학생 이하 보호자 동반 필수',0,null]];
   let bad = 0;
   for (const [s, mi, ma] of T) { const r = parseAge(s); if (r.min !== mi || r.max !== ma) { bad++; console.log('✗', JSON.stringify(s), '→', r.min, r.max, '기대', mi, ma); } }
   /* 아이 맞춤 점수 · 뭉뚱그린 이름 · 날짜 채움 · 시도 바로잡기 · 같은 행사 묶기 */
@@ -591,9 +613,10 @@ if (process.env.EV_SELFTEST) {
     ev('data_fest', '2026년 제25회 팔공산 단풍축제', '대구', '동구', '2026-10-30', '2026-11-01'), ev('data_fest', '팔공산 단풍축제', '대구', '동구', '2026-10-30', '2026-11-01'),
     ev('data_event', '유니버설발레단', '경기', '평택시', '2026-11-20', '2026-11-20'), ev('data_event', '유니버설발레단', '경기', '평택시', '2026-11-21', '2026-11-21'),
     ev('seoul', '[A도서관] 그림책 원화전', '서울', '마포구', '2026-11-01', '2026-11-30'), ev('seoul', '[A도서관] 그림책 원화전', '서울', '은평구', '2026-11-01', '2026-11-30'),
-    ev('seoul', '2026 신년 해맞이', '서울', '마포구', '2026-01-01', '2026-01-01'), ev('seoul', '2027 신년 해맞이', '서울', '마포구', '2027-01-01', '2027-01-01')]);
+    ev('seoul', '2026 신년 해맞이', '서울', '마포구', '2026-01-01', '2026-01-01'), ev('seoul', '2027 신년 해맞이', '서울', '마포구', '2027-01-01', '2027-01-01'),
+    ev('seoul', '[노원문화재단] 2026 노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08'), ev('tour', '노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08')]);
   const ballet = D.find(e => e.title === '유니버설발레단');
-  if (D.length !== 7 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
+  if (D.length !== 8 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
   const total = T.length + K.length + G.length + 5 + 1;
   console.log(bad ? `자가 점검 실패 ${bad}건` : `자가 점검 ${total}건 모두 통과 (나이 읽기 ${T.length})`);
   process.exit(bad ? 1 : 0);
