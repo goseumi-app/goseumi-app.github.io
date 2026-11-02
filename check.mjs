@@ -220,7 +220,7 @@ async function fresh(opts={}, before) {
         if (e.ageMin != null && (typeof e.ageMin !== 'number' || e.ageMin >= 84)) probs.push(tag + ' 연령 하한 ' + e.ageMin);
         if (e.ageMax != null && typeof e.ageMax !== 'number') probs.push(tag + ' 연령 상한 꼴');
         if (e.sido != null && !SIDO.includes(e.sido)) probs.push(tag + ' 시도 이름 ' + e.sido);
-        if (!['seoul','data_event','data_fest','kopis'].includes(e.src)) probs.push(tag + ' 출처 ' + e.src);
+        if (!['seoul','data_event','data_fest','tour','kopis'].includes(e.src)) probs.push(tag + ' 출처 ' + e.src);
         if (e.kid != null && ![0, 1, 2, 3].includes(e.kid)) probs.push(tag + ' 아이 맞춤 점수 ' + e.kid);
       });
       if (JSON.stringify(d).length > 3_000_000) probs.push('파일이 3MB를 넘음');
@@ -618,8 +618,16 @@ try {
   if (fold.order !== 'af') probs.push('아이 맞춤 순서 ' + JSON.stringify(fold.order) + ' (기대 af)');
   if (!fold.aShown || !fold.fHidden || !fold.hasBtn || !fold.fShown) probs.push('누구나 접기 이상 ' + JSON.stringify(fold));
   if (!fold.homeFirst) probs.push('홈 카드에 아이 맞춤 행사가 먼저 안 나옴');
+  /* 출처 표시 — KOPIS 자료를 쓰면 «(재)예술경영지원센터 공연예술통합전산망(www.kopis.or.kr)»을 밝혀야 한다(KOPIS 이용 제한 안내: 출처가 없으면 서비스 중단). 관광공사 자료도 이름이 보여야 한다 */
+  const credit = await page.evaluate(() => {
+    evData.sources = { seoul:{ok:true,n:1}, tour:{ok:true,n:1}, kopis:{ok:true,n:1} };
+    go('events'); const t = document.querySelector('main').innerText;
+    return { kopis: /공연예술통합전산망\(www\.kopis\.or\.kr\)/.test(t), tour: /한국관광공사/.test(t) };
+  });
+  if (!credit.kopis) probs.push('KOPIS 자료를 쓰는데 출처 문구가 없음');
+  if (!credit.tour) probs.push('한국관광공사 자료 이름이 안 보임');
   (probs.length || errs.length) ? bad('«이번 주말 어디 갈까» 거르기 이상', probs.concat(errs.slice(0,2)).join(' / '))
-    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 아이 맞춤 먼저·누구나는 접기, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 오류 0');
+    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 아이 맞춤 먼저·누구나는 접기, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 자료 출처 표시(KOPIS·관광공사), 오류 0');
   await ctx.close();
 } catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
