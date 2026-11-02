@@ -585,12 +585,12 @@ try {
     evPref.free = true; const free = names(evList('wk')); evPref.free = false;
     go('home'); const home = document.querySelector('main').innerText;
     go('events'); const evs = document.querySelector('main').innerText;
-    const navOn = !!document.querySelector('nav.bottom button[data-v="plays"].on');      /* 행사 화면은 놀이 탭 안에 있다 */
-    go('plays'); const pl = document.querySelector('main').innerText;
-    const seg = [...document.querySelectorAll('main .segsw button')].find(b => /주말 나들이/.test(b.textContent));
-    if (seg) seg.click(); const segGoes = view === 'events';
+    const navOn = !!document.querySelector('nav.bottom button[data-v="events"].on');     /* 행사 화면은 아래 메뉴 «나들이» 탭 */
+    go('home');
+    const nb = document.querySelector('nav.bottom button[data-v="events"]');
+    if (nb) nb.click(); const navGoes = view === 'events';
     return { wk, wkNoAge, m1, free, homeCard: /이번 주말 어디 갈까[\s\S]*예시 인천 전연령 주말 행사/.test(home), listShown: /예시 인천 전연령 주말 행사/.test(evs) && !/예시 서울 전연령/.test(evs), hasShare: /목록 보내기/.test(evs),
-      navOn, segShown: !!seg && /주말 나들이/.test(pl), segGoes, plainText: !/[«»]/.test(evs) };
+      navOn, navHas: !!nb && /나들이/.test(nb.textContent), navGoes, plainText: !/[«»]/.test(evs) };
   });
   if (r.wk !== 'af') probs.push('주말·인천·10개월 거르기 ' + JSON.stringify(r.wk) + ' (기대 af)');
   if (r.wkNoAge !== 'abf') probs.push('나이 거르기 끄면 ' + JSON.stringify(r.wkNoAge) + ' (기대 abf)');
@@ -599,9 +599,15 @@ try {
   if (!r.homeCard) probs.push('홈 카드에 주말 행사가 안 보임');
   if (!r.listShown) probs.push('행사 화면 목록이 조건대로 안 나옴');
   if (!r.hasShare) probs.push('공유 단추 없음');
-  if (!r.navOn) probs.push('행사 화면에서 아래 «놀이» 탭이 켜지지 않음');
-  if (!r.segShown) probs.push('놀이 탭 위에 «주말 나들이» 전환이 없음 (설정까지 가야 찾던 문제)');
-  if (!r.segGoes) probs.push('«주말 나들이»를 눌러도 행사 화면으로 안 감');
+  if (!r.navOn) probs.push('행사 화면에서 아래 «나들이» 탭이 켜지지 않음');
+  if (!r.navHas) probs.push('아래 메뉴에 «나들이»가 없음 (설정·놀이 탭 안에서 찾아야 하던 문제 — 2026-11-01·02 두 번 지적)');
+  if (!r.navGoes) probs.push('아래 «나들이»를 눌러도 행사 화면으로 안 감');
+  /* 아래 메뉴가 여섯 칸 — 좁은 폰(360px)에서도 칸마다 44px 이상, 글자가 한 줄 */
+  await page.setViewportSize({ width: 360, height: 760 });
+  const fit = await page.evaluate(() => [...document.querySelectorAll('nav.bottom button')].map(b => { const rc = b.getBoundingClientRect(); return { v: b.dataset.v, w: Math.round(rc.width), h: Math.round(rc.height), wrap: b.scrollHeight > b.clientHeight + 2 }; }));
+  await page.setViewportSize({ width: 412, height: 900 });
+  const tight = fit.filter(x => x.w < 44 || x.h < 44 || x.wrap);
+  if (tight.length) probs.push('360px 폰에서 아래 메뉴 칸이 좁거나 글자가 넘침 ' + JSON.stringify(tight));
   if (!r.plainText) probs.push('행사 화면 글에 «» 꺾쇠가 남음 (짧고 평범한 말로)');
   /* 아이 맞춤(kid 2·3)이 먼저, «누구나»·모름(kid 0·1)은 «더 보기» 뒤에 접힌다 — 첫 서울 자료에 일반 미술 전시가 백 개 넘게 섞였던 것 */
   const fold = await page.evaluate(() => {
@@ -627,7 +633,7 @@ try {
   if (!credit.kopis) probs.push('KOPIS 자료를 쓰는데 출처 문구가 없음');
   if (!credit.tour) probs.push('한국관광공사 자료 이름이 안 보임');
   (probs.length || errs.length) ? bad('«이번 주말 어디 갈까» 거르기 이상', probs.concat(errs.slice(0,2)).join(' / '))
-    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 아이 맞춤 먼저·누구나는 접기, 놀이 탭에서 한 번에 열림, 목록 없을 땐 홈 카드 없음, 자료 출처 표시(KOPIS·관광공사), 오류 0');
+    : ok('«이번 주말 어디 갈까» — 아이 개월·지역·기간·무료 거르기 정확, 아이 맞춤 먼저·누구나는 접기, 아래 메뉴 «나들이»로 한 번에 열림(360px에서도 칸 44px 이상), 목록 없을 땐 홈 카드 없음, 자료 출처 표시(KOPIS·관광공사), 오류 0');
   await ctx.close();
 } catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
