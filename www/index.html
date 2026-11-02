@@ -2461,7 +2461,7 @@ function copyDigest(txt){
    원칙: 자료에 있는 것만 보여 준다 — 제목·날짜·장소·연령·요금은 출처 그대로, 없으면 «표기 없음». 판정 없음, 추천 점수 없음. */
 const EV_URL="https://goseumi-app.github.io/assets/events.json";
 const EV_SIDO=["서울","경기","인천","부산","대구","광주","대전","울산","세종","강원","충북","충남","전북","전남","경북","경남","제주"];
-const EV_SRC={seoul:"서울시 문화행사 정보",data_event:"공공데이터포털 공연행사",data_fest:"공공데이터포털 문화축제",kopis:"KOPIS 공연예술통합전산망"};
+const EV_SRC={seoul:"서울시 문화행사 정보",data_event:"공공데이터포털 공연행사",data_fest:"공공데이터포털 문화축제",tour:"한국관광공사 관광정보",kopis:"(재)예술경영지원센터 공연예술통합전산망(KOPIS)"};
 let evData=store.get("evData",null), evPref=store.get("evPref",{on:true,regions:null,span:"wk",free:false,age:true,at:0});
 let evBusy=false, evErr="", evLastTry=0, evMore=false;
 function evValid(e){
@@ -2618,11 +2618,12 @@ function vEvents(){
   return h+evFoot(L.length>0);
 }
 function evFoot(tip){
-  const N={seoul:"서울시",data:"공공데이터포털",kopis:"KOPIS"}, st=evData&&evData.sources||{};
+  const N={seoul:"서울시",data:"공공데이터포털",tour:"한국관광공사",kopis:"KOPIS"}, st=evData&&evData.sources||{};
   const got=Object.keys(st).filter(k=>st[k]&&st[k].ok).map(k=>N[k]||k);
   return '<div class="card" style="border-color:var(--peach)"><div class="small" style="line-height:1.8">'
    +(tip?'가기 전에 날짜와 예약은 행사 페이지에서 한 번 더 확인해 주세요.<br>':'')
    +(got.length?got.join("·"):"공공기관")+' 자료를 월·목 아침에 새로 모아요. 아이 정보와 고른 지역은 어디에도 보내지 않아요.'
+   +(st.kopis&&st.kopis.ok?'<br>공연 정보 출처: (재)예술경영지원센터 공연예술통합전산망(www.kopis.or.kr)':'')
    +'</div><button class="ghost" onclick="evLoad(true)">🔄 새로 받기</button></div></div>';
 }
 
