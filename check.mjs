@@ -626,9 +626,13 @@ try {
   if (!fold.homeFirst) probs.push('홈 카드에 아이 맞춤 행사가 먼저 안 나옴');
   /* 출처 표시 — KOPIS 자료를 쓰면 «(재)예술경영지원센터 공연예술통합전산망(www.kopis.or.kr)»을 밝혀야 한다(KOPIS 이용 제한 안내: 출처가 없으면 서비스 중단). 관광공사 자료도 이름이 보여야 한다 */
   const credit = await page.evaluate(() => {
+    const has = () => { go('events'); const t = document.querySelector('main').innerText; return { kopis: /공연예술통합전산망\(www\.kopis\.or\.kr\)/.test(t), tour: /한국관광공사/.test(t) }; };
     evData.sources = { seoul:{ok:true,n:1}, tour:{ok:true,n:1}, kopis:{ok:true,n:1} };
-    go('events'); const t = document.querySelector('main').innerText;
-    return { kopis: /공연예술통합전산망\(www\.kopis\.or\.kr\)/.test(t), tour: /한국관광공사/.test(t) };
+    const a = has();
+    /* 그날 KOPIS가 막혀 지난 자료를 이어 쓴 판(fetch.mjs carryOver, 2026-11-05) — KOPIS 자료가 보이는 동안은 출처도 보여야 한다 */
+    evData.sources = { seoul:{ok:true,n:1}, tour:{ok:true,n:1}, kopis:{ok:true,n:1,carried:'2026-11-02',note:'오늘 받기 실패'} };
+    const b = has();
+    return { kopis: a.kopis && b.kopis, tour: a.tour && b.tour };
   });
   if (!credit.kopis) probs.push('KOPIS 자료를 쓰는데 출처 문구가 없음');
   if (!credit.tour) probs.push('한국관광공사 자료 이름이 안 보임');
