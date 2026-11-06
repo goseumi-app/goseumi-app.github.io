@@ -4,6 +4,8 @@ name: 행사 목록 만들기 (월·목 아침)
 # 앱은 이 파일 하나만 받아 폰 안에서 아이 개월·지역으로 거른다. 자료 출처·거르는 규칙은 _tools/events/fetch.mjs 머리말에.
 # 열쇠(저장소 Settings → Secrets and variables → Actions): SEOUL_KEY · DATA_GO_KR_KEY · KOPIS_KEY — 있는 것만 쓴다.
 # 열쇠가 하나도 없으면 파일을 건드리지 않고 조용히 끝난다. 열쇠가 있는데 전부 실패하면 실패로 끝난다(옛 파일 유지).
+# 한 곳만 실패하면 그곳을 마지막으로 제대로 받은 판(깃 기록에서 찾음, 21일 안)에서 안 끝난 것을 이어 쓴다 — 그래서 기록을 60개까지 받는다.
+#   (2026-11-05 목: KOPIS가 «Request Blocked»로 막혀 921건 → 320건이 된 뒤 넣음)
 
 on:
   schedule:
@@ -24,6 +26,8 @@ jobs:
     steps:
       - name: 코드 가져오기
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 60          # 지난 행사 파일을 깃 기록에서 찾아 이어 쓰려고
 
       - name: Node 설치
         uses: actions/setup-node@v7
@@ -47,10 +51,11 @@ jobs:
             echo "바뀐 것 없음 — 올리지 않음"; echo "pushed=0" >> "$GITHUB_OUTPUT"; exit 0
           fi
           n=$(node -e "console.log(require('./assets/events.json').count)")
+          c=$(node -e "const s=require('./assets/events.json').sources||{};const k=Object.keys(s).filter(x=>s[x]&&s[x].carried);console.log(k.length?' · 지난 자료 이어 씀: '+k.join(','):'')")
           git config user.name "goseumi-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/events.json
-          git commit -m "data: 행사 목록 $(TZ=Asia/Seoul date +%Y-%m-%d) — ${n}건 (자동)"
+          git commit -m "data: 행사 목록 $(TZ=Asia/Seoul date +%Y-%m-%d) — ${n}건${c} (자동)"
           git push
           echo "pushed=1" >> "$GITHUB_OUTPUT"
 
