@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), (arr[i + 1] && !arr[i + 1].startsWith('--')) ? arr[i + 1] : '1'] : []).filter(x => x.length));
 const OUT = args.out || 'assets/events.json';
@@ -183,11 +184,13 @@ function placeholderRange(start, end) {
 }
 
 /* ───────── 받아오기 ───────── */
-async function getJSON(url, { timeout = 30000, as = 'json' } = {}) {
+/* 누가 묻는지 밝히는 이름표 — 다시 물을 때만 단다(첫 시도는 11/2에 통했던 그대로) */
+const UA = 'goseumi-events/1.0 (+https://goseumi-app.github.io)';
+async function getJSON(url, { timeout = 30000, as = 'json', ua = null } = {}) {
   if (process.env.EV_MOCK) return mockResponse(url, as);   /* 열쇠 없이 흐름만 점검할 때 — 지어낸 응답(제목에 «예시») */
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetch(url, { signal: ctl.signal, headers: { 'accept': as === 'json' ? 'application/json, */*' : 'application/xml, text/xml, */*' } });
+    const r = await fetch(url, { signal: ctl.signal, headers: { 'accept': as === 'json' ? 'application/json, */*' : 'application/xml, text/xml, */*', ...(ua ? { 'user-agent': ua } : {}) } });
     const body = await r.text();
     if (!r.ok) throw new Error(`HTTP ${r.status} ${body.slice(0, 160).replace(/\s+/g, ' ')}`);
     if (as === 'text') return body;
@@ -195,9 +198,24 @@ async function getJSON(url, { timeout = 30000, as = 'json' } = {}) {
   } finally { clearTimeout(t); }
 }
 const sleep = ms => new Promise(r => setTimeout(r, process.env.EV_MOCK ? 0 : ms));
+/* 막혔을 때 쉬었다가 다시 — 2026-11-05 목 06:00 KOPIS가 첫 물음부터 «HTTP 400 Request Blocked»(방화벽)를 돌려줬다.
+   15초·45초 쉬고 두 번 더 묻고, 다시 물을 때는 이름표(UA)를 단다. 어느 시도에서 됐는지 기록에 남긴다. */
+async function getRetry(url, opts, log, label, waits = [15000, 45000]) {
+  for (let i = 0; ; i++) {
+    try { const body = await getJSON(url, i ? { ...opts, ua: UA } : opts); if (i) log(`${label}: ${i + 1}번째 시도에 받음(이름표 달고)`); return { body, ua: i ? UA : null }; }
+    catch (e) {
+      if (i >= waits.length) throw e;
+      log(`${label}: ${i + 1}번째 실패(${cut(e.message, 90)}) — ${waits[i] / 1000}초 뒤 다시`);
+      await sleep(waits[i]);
+    }
+  }
+}
 /* ───────── 흐름 점검용 가짜 응답 (EV_MOCK=1) — 실제 자료가 아니다 ───────── */
 function mockResponse(url, as) {
   const d = n => addDays(TODAY, n);
+  /* EV_MOCK_BLOCK=kopis 처럼 주면 그곳만 방화벽에 막힌 것처럼(2026-11-05에 실제로 받은 답과 같은 꼴) */
+  const BLOCK_AT = { kopis: 'kopis.or.kr', seoul: 'openapi.seoul.go.kr', tour: '/KorService2/', data: 'tn_pubr_public_' };
+  if ((process.env.EV_MOCK_BLOCK || '').split(',').some(b => BLOCK_AT[b] && url.includes(BLOCK_AT[b]))) throw new Error('HTTP 400 400 Bad Request Request Blocked <br>');
   if (url.includes('openapi.seoul.go.kr')) {
     const row = (TITLE, USE_TRGT, s, e, extra = {}) => ({ CODENAME: '교육/체험', GUNAME: '강서구', TITLE, DATE: `${s}~${e}`, PLACE: '예시 어린이도서관', ORG_NAME: '예시', USE_TRGT, USE_FEE: '', IS_FREE: '무료', ORG_LINK: 'https://example.com/seoul', MAIN_IMG: '', STRTDATE: s + ' 00:00:00.0', END_DATE: e + ' 00:00:00.0', ...extra });
     return { culturalEventInfo: { list_total_count: 4, RESULT: { CODE: 'INFO-000', MESSAGE: '정상' }, row: [
@@ -455,8 +473,10 @@ function kopisErr(xml) {
 async function fetchKopis(key, log) {
   const out = []; const list = [];
   const sd = FROM.replace(/-/g, ''), ed = TO.replace(/-/g, '');
+  let ua = null;   /* 다시 물어서 됐으면 그 뒤로는 계속 이름표를 단다 */
   for (let p = 1; p <= 20; p++) {
-    const xml = await getJSON(`https://www.kopis.or.kr/openApi/restful/pblprfr?service=${encodeURIComponent(key)}&stdate=${sd}&eddate=${ed}&cpage=${p}&rows=100&kidstate=Y`, { as: 'text' });
+    const got = await getRetry(`https://www.kopis.or.kr/openApi/restful/pblprfr?service=${encodeURIComponent(key)}&stdate=${sd}&eddate=${ed}&cpage=${p}&rows=100&kidstate=Y`, { as: 'text', ua }, log, `KOPIS 목록 ${p}쪽`);
+    const xml = got.body; ua = ua || got.ua;
     const err = kopisErr(xml); if (err) throw new Error(err);     /* 열쇠 오류도 <db> 안에 담겨 올 수 있다 */
     const recs = xmlRecords(xml, 'db').filter(r => r.mt20id);
     list.push(...recs);
@@ -473,22 +493,23 @@ async function fetchKopis(key, log) {
     if (!id) return null;
     if (!place.has(id)) {
       let a = null;
-      try { a = strip(xmlRecords(await getJSON(`https://www.kopis.or.kr/openApi/restful/prfplc/${encodeURIComponent(id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000 }), 'db')[0]?.adres) || null; }
+      try { a = strip(xmlRecords(await getJSON(`https://www.kopis.or.kr/openApi/restful/prfplc/${encodeURIComponent(id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000, ua }), 'db')[0]?.adres) || null; }
       catch (e) { log(`KOPIS 공연장 실패 ${id}: ${e.message}`); }
       place.set(id, a); await sleep(300);
     }
     return place.get(id);
   }
+  let detFail = 0;
   async function worker() {
     while (i < cap) {
       const { r, start, end, title } = cand[i++];
       let det = {};
       try {
-        const xml = await getJSON(`https://www.kopis.or.kr/openApi/restful/pblprfr/${encodeURIComponent(r.mt20id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000 });
+        const xml = await getJSON(`https://www.kopis.or.kr/openApi/restful/pblprfr/${encodeURIComponent(r.mt20id)}?service=${encodeURIComponent(key)}`, { as: 'text', timeout: 20000, ua });
         det = xmlRecords(xml, 'db')[0] || {};
         const rel = xmlRecords(xml, 'relate');
         det._url = rel.map(x => safeUrl(x.relateurl)).find(Boolean) || null;
-      } catch (e) { log(`KOPIS 상세 실패 ${r.mt20id}: ${e.message}`); }
+      } catch (e) { detFail++; if (detFail <= 5) log(`KOPIS 상세 실패 ${r.mt20id}: ${e.message}`); }
       await sleep(300);
       const age = parseAge(det.prfage);
       if (age.min === 999) continue;
@@ -509,7 +530,9 @@ async function fetchKopis(key, log) {
     }
   }
   await Promise.all([worker(), worker()]);   /* KOPIS 안내: 1초에 10회를 넘기면 서비스가 멈춘다 — 둘이서 0.3초씩 쉬어 초당 7회 아래 */
-  log(`KOPIS: 목록 ${list.length}, 기간·이름 통과 ${cand.length}, 상세 ${cap}, 남김 ${out.length}`);
+  log(`KOPIS: 목록 ${list.length}, 기간·이름 통과 ${cand.length}, 상세 ${cap}(실패 ${detFail}), 남김 ${out.length}`);
+  /* 상세가 절반 넘게 막혔으면 연령·링크 없는 반쪽 목록이 된다 — 실패로 보고 지난 자료를 이어 쓰게 한다 */
+  if (cap >= 20 && detFail > cap / 2) throw new Error(`KOPIS 상세 ${detFail}/${cap}건 실패 — 중간에 막힌 듯`);
   return out;
 }
 
@@ -555,6 +578,38 @@ function dedupe(events) {
   return out;
 }
 
+/* ───────── 한 곳이 실패하면 지난번에 제대로 받은 것을 이어 쓴다 ─────────
+   2026-11-05 목 06:00: KOPIS가 «HTTP 400 Request Blocked»로 막혀 목록이 921건 → 320건(경기 194 → 19)으로 줄었다.
+   한 곳이 막혀도 목록이 반토막 나지 않게, 그 출처를 마지막으로 «제대로» 받은 판(지금 파일 → 깃 기록 순)을 찾아
+   아직 안 끝난 것만 가져온다. 이어 쓴 판은 다시 이어 쓰지 않는다(늘 원래 받은 날 기준). 21일이 넘은 자료는 쓰지 않는다.
+   이어 쓴 자료도 앱 아래 출처 문구(KOPIS 이용 조건)는 그대로 보여야 하므로 ok:true로 두고 carried(받은 날)·note로 표시한다. */
+const CARRY_DAYS = 21;
+const SRC_OF = { seoul: ['seoul'], data: ['data_event', 'data_fest'], tour: ['tour'], kopis: ['kopis'] };
+const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+function prevReaders() {
+  if (process.env.EV_PREV) return process.env.EV_PREV.split(',').filter(Boolean).map(f => () => fs.readFileSync(f, 'utf8'));   /* 시험용 */
+  const out = [() => fs.readFileSync(OUT, 'utf8')];
+  try {
+    const sh = (...a) => execFileSync('git', a, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+    const root = sh('rev-parse', '--show-toplevel').trim();
+    const rel = path.relative(root, path.resolve(OUT)).split(path.sep).join('/');
+    for (const sha of sh('-C', root, 'log', '-n', '60', '--format=%H', '--', rel).split('\n').filter(Boolean)) out.push(() => sh('-C', root, 'show', `${sha}:${rel}`));
+  } catch { /* 깃이 없으면 지금 파일만 */ }
+  return out;
+}
+function carryOver(name, log) {
+  for (const read of prevReaders()) {
+    let d; try { d = JSON.parse(read()); } catch { continue; }
+    const s = d && d.sources && d.sources[name];
+    if (!s || !s.ok || s.carried || !d.updated || !Array.isArray(d.events)) continue;
+    const age = daysBetween(d.updated, TODAY);
+    if (!(age >= 0)) continue;
+    if (age > CARRY_DAYS) { log(`${name}: 마지막으로 제대로 받은 날(${d.updated})이 ${age}일 전이라 이어 쓰지 않음`); return null; }
+    return { from: d.updated, items: d.events.filter(e => SRC_OF[name].includes(e.src) && inWindow(e.start, e.end)) };
+  }
+  return null;
+}
+
 /* ───────── 본문 ───────── */
 async function main() {
   const have = Object.entries(KEYS).filter(([, v]) => v).map(([k]) => k);
@@ -567,9 +622,16 @@ async function main() {
   for (const [name, fn, key] of [['seoul', fetchSeoul, KEYS.seoul], ['data', fetchDataGo, KEYS.data], ['tour', fetchTour, KEYS.data], ['kopis', fetchKopis, KEYS.kopis]]) {
     if (!key) { status[name] = { ok: false, n: 0, note: '열쇠 없음 — 건너뜀' }; continue; }
     try { const a = await fn(key, log); status[name] = { ok: true, n: a.length, ...(a.note ? { note: a.note } : {}) }; all.push(...a); }
-    catch (e) { status[name] = { ok: false, n: 0, note: cut(e.message, 200) }; log(`${name} 실패: ${e.message}`); }
+    catch (e) {
+      log(`${name} 실패: ${e.message}`);
+      const c = carryOver(name, log);
+      if (c && c.items.length) {
+        status[name] = { ok: true, n: c.items.length, carried: c.from, note: `오늘 받기 실패(${cut(e.message, 70)}) — ${c.from}에 받은 것 중 안 끝난 ${c.items.length}건 이어 씀` };
+        all.push(...c.items); log(`${name}: ${c.from}에 받은 ${c.items.length}건을 이어 씀`);
+      } else status[name] = { ok: false, n: 0, note: cut(e.message, 200) };
+    }
   }
-  const okCount = Object.values(status).filter(s => s.ok).length;
+  const okCount = Object.values(status).filter(s => s.ok && !s.carried).length;   /* 새로 받은 곳이 하나도 없으면 옛 파일을 그대로 둔다 */
   if (!okCount) { console.error('받아온 자료가 하나도 없습니다. 옛 파일을 그대로 둡니다.'); summary({ status, failed: true }); return 1; }
 
   all = all.filter(e => e.title && !genericTitle(e.title) && (e.start || e.end) && e.ageMin !== 999 && !(e.ageMin != null && e.ageMin >= 84));
@@ -591,7 +653,7 @@ function summary({ status = {}, data, skipped, failed }) {
   let md = '## 행사 목록 만들기\n\n';
   if (skipped) { md += '열쇠가 없어 건너뜀 (SEOUL_KEY / DATA_GO_KR_KEY / KOPIS_KEY 중 하나라도 저장소 Secrets에 넣으면 돕니다).\n'; fs.appendFileSync(f, md); return; }
   md += '| 자료 | 결과 | 건수 | 메모 |\n|---|---|---|---|\n';
-  for (const [k, v] of Object.entries(status)) md += `| ${{ seoul: '서울시 문화행사', data: '공공데이터포털 표준데이터', tour: '한국관광공사 축제·행사', kopis: 'KOPIS 아동 공연' }[k]} | ${v.ok ? '✅' : '⚠️'} | ${v.n} | ${v.note || ''} |\n`;
+  for (const [k, v] of Object.entries(status)) md += `| ${{ seoul: '서울시 문화행사', data: '공공데이터포털 표준데이터', tour: '한국관광공사 축제·행사', kopis: 'KOPIS 아동 공연' }[k]} | ${v.ok ? (v.carried ? '♻️ 지난 자료' : '✅') : '⚠️'} | ${v.n} | ${v.note || ''} |\n`;
   if (failed) { md += '\n**받아온 자료가 없어 옛 파일을 그대로 두었습니다.**\n'; fs.appendFileSync(f, md); return; }
   md += `\n**${data.count}건** · 기간 ${data.window[0]} ~ ${data.window[1]}\n\n지역별: ` + Object.entries(data.bySido).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ') + '\n\n';
   const ages = { 표기: data.events.filter(e => e.ageMin != null).length, 미표기: data.events.filter(e => e.ageMin == null).length };
@@ -646,7 +708,24 @@ if (process.env.EV_SELFTEST) {
     ev('seoul', '[노원문화재단] 2026 노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08'), ev('tour', '노원달빛산책', '서울', '노원구', '2026-10-16', '2026-11-08')]);
   const ballet = D.find(e => e.title === '유니버설발레단');
   if (D.length !== 8 || !ballet || ballet.start !== '2026-11-20' || ballet.end !== '2026-11-21') { bad++; console.log('✗ 묶기', D.length, D.map(e => e.title + ' ' + e.start + '~' + e.end).join(' / ')); }
-  const total = T.length + K.length + G.length + 6 + 1;
+  /* 지난 자료 이어 쓰기 — 지금 파일(실패 판) → 이어 쓴 판(건너뛰어야 함) → 3일 전 제대로 받은 판 */
+  const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || '/tmp', 'ev-carry-'));
+  const put = (n, o) => { const f = path.join(tmp, n); fs.writeFileSync(f, JSON.stringify(o)); return f; };
+  const kp = (id, s, e) => ({ src: 'kopis', id: 'kopis:' + id, title: '예시 공연 ' + id, sido: '경기', start: addDays(TODAY, s), end: addDays(TODAY, e), ageMin: 36, ageMax: null, kid: 3 });
+  const f1 = put('1.json', { updated: TODAY, sources: { kopis: { ok: false, n: 0 } }, events: [] });
+  const f2 = put('2.json', { updated: addDays(TODAY, -1), sources: { kopis: { ok: true, n: 1, carried: addDays(TODAY, -4) } }, events: [kp('X', 0, 9)] });
+  const f3 = put('3.json', { updated: addDays(TODAY, -3), sources: { kopis: { ok: true, n: 3 }, data: { ok: true, n: 1 } }, events: [kp('A', -3, 5), kp('B', -9, -5), kp('C', 2, 40), { ...kp('D', 1, 2), src: 'data_fest' }] });
+  const f4 = put('4.json', { updated: addDays(TODAY, -30), sources: { kopis: { ok: true, n: 1 } }, events: [kp('Z', -30, 30)] });
+  const quiet = () => {};
+  process.env.EV_PREV = [f1, f2, f3].join(',');
+  const c1 = carryOver('kopis', quiet), c2 = carryOver('data', quiet), c3 = carryOver('tour', quiet);
+  process.env.EV_PREV = [f1, f4].join(',');
+  const c4 = carryOver('kopis', quiet);
+  delete process.env.EV_PREV; fs.rmSync(tmp, { recursive: true, force: true });
+  if (!c1 || c1.from !== addDays(TODAY, -3) || c1.items.map(e => e.id).join() !== 'kopis:A,kopis:C') { bad++; console.log('✗ 이어 쓰기', JSON.stringify(c1)); }
+  if (!c2 || c2.items.length !== 1 || c2.items[0].src !== 'data_fest' || c3 !== null) { bad++; console.log('✗ 이어 쓰기(출처 짝)', JSON.stringify(c2), JSON.stringify(c3)); }
+  if (c4 !== null) { bad++; console.log('✗ 이어 쓰기(21일 넘음)', JSON.stringify(c4)); }
+  const total = T.length + K.length + G.length + 6 + 1 + 3;
   console.log(bad ? `자가 점검 실패 ${bad}건` : `자가 점검 ${total}건 모두 통과 (나이 읽기 ${T.length})`);
   process.exit(bad ? 1 : 0);
 }
