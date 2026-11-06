@@ -1053,6 +1053,8 @@ function obNext1(){const b=$("#obBirth").value;if(!b){alert("생년월일을 입
 function obNext2(){if(!ob.domain){alert("하나를 골라주세요. 「아직 모르겠어요」도 됩니다.");return}ob.step=3;render()}
 function obDone(){if(!ob.reason){alert("하나를 골라주세요.");return}
  child={birth:ob.birth,due:ob.due||null,domain:ob.domain,reason:ob.reason,name:(ob.name||"우리 아이")};
+ /* 방금 시작한 분에게 «고친 내역»은 소음이다 — 지금 판의 새 소식은 본 것으로 둔다(2026-11-07 중간점검: 첫 홈 두 화면을 차지했다) */
+ store.set("seenNew",WHATS_NEW.v);
  save();go(ob.reason==="worry"?"worry":"home")}
 
 function vWorry(){
@@ -1158,9 +1160,10 @@ function vHome(){
   }
   // ⚡ 한 번에 기록 — 손에 아기를 안고도 되도록 (경쟁앱 리뷰에서 가장 많이 요구된 것)
   h+=quickRow();
-  h+=whatsNewCard();
-  h+=backupCard();
+  /* 순서: 홈 화면에 두기(다시 찾아오는 길) → 백업(기록 지키기) → 새 소식. 새 소식이 위에 있으면 설치 안내가 첫 화면 밖으로 밀린다 */
   h+=installCard();
+  h+=backupCard();
+  h+=whatsNewCard();
   // D-day
   const up=appts.filter(a=>daysBetween(todayStr(),a.date)>=0).sort((a,b)=>a.date<b.date?-1:1);
   if(up.length){const a=up[0];const dd=daysBetween(todayStr(),a.date);
@@ -2337,13 +2340,12 @@ function setSex(s){ child.sex=s; save(); render(); }
 
 
 
-/* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝 */
+/* 새로 생긴 것 안내 — 이미 쓰던 분이 새 기능을 놓치지 않게. 한 번 보고 닫으면 끝.
+   3개까지만(점검 2-5i가 지킴) — 고친 내역을 늘어놓으면 홈의 본론(오늘 해볼 놀이)을 밀어낸다. 방금 시작한 분에겐 obDone()이 본 것으로 둔다 */
 const WHATS_NEW={v:"v32",items:[
  ["🎪 아래 메뉴에 '나들이'가 생겼어요","고른 지역의 어린이 공연·전시·체험·축제를 아이 개월 수에 맞춰 보여 줘요. 목록은 월·목 아침마다 새로 모아요.","events"],
- ["📤 하루 요약에 쓴 글이 다 들어가요","요약이 기록을 80자에서 자르던 것을 고쳤어요. «오늘 뭘 해줬나요»와 «생각나는 것» 칸도 함께 들어가고, 놀이 한 줄에는 어느 놀이였는지 붙어요. 지난 날짜는 달력에서 다시 보내면 온전한 글로 나와요.",""],
  ["🧸 만 6세 전까지 놀이 426개","9~35개월은 구간마다 영역별 놀이가 3개에서 8개로 늘었고, 36~71개월(만 3~5세) 구간 6개가 새로 생겼어요. 모두 미국 CDC 공식 이정표·활동 팁이 출처예요.","plays"],
- ["🔁 같은 놀이 덜 반복","«오늘 해볼 놀이»는 가장 오래 안 본 놀이부터 골라요. 구간의 놀이를 한 바퀴 다 돌기 전에는 같은 놀이가 다시 나오지 않아요.",""],
- ["📐 수학의 눈 91개 추가","수 세기·크기 견주기·위치 말·규칙 무늬·분류처럼 수학의 뿌리가 보이는 새 놀이에만 붙였어요.","plays"]]};
+ ["🔁 같은 놀이 덜 반복","«오늘 해볼 놀이»는 가장 오래 안 본 놀이부터 골라요. 구간의 놀이를 한 바퀴 다 돌기 전에는 같은 놀이가 다시 나오지 않아요.",""]]};
 function whatsNewCard(){
   if(store.get("seenNew")===WHATS_NEW.v)return"";
   if(!store.get("firstUse"))return"";           /* 완전 신규 사용자에겐 띄우지 않음 */
