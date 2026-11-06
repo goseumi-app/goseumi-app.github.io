@@ -641,6 +641,44 @@ try {
   await ctx.close();
 } catch(e) { bad('«이번 주말 어디 갈까» 거르기 이상', '검사 중단: '+String(e.message).split('\n')[0]); }
 
+/* 2-5i. 처음 쓰는 사람의 첫 홈 화면 — 2026-11-07 중간점검: 첫 설정을 마친 새 사용자의 홈을 «🎁 새로 생긴 것»(고친 내역 5개)이
+   두 화면 가까이 차지해, «홈 화면에 두고 앱처럼 쓰세요»와 «오늘 해볼 놀이»가 첫 화면 밖으로 밀렸다.
+   (신규에겐 안 띄우려던 firstUse 확인을 backupDue()가 같은 화면에서 먼저 채워, 다음 다시 그리기부터 뚫렸다.)
+   ① 새 사용자(첫 설정 세 단계를 실제로 누름, 아이폰 사파리): 다시 그려도 «새로 생긴 것» 없음, 설치 안내는 첫 화면(844px) 안
+   ② 이미 쓰던 사람: «새로 생긴 것»은 그대로 보이고, 설치 안내가 그보다 위, 새 소식은 3개 이하 */
+try {
+  const probs = [], errs = [];
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  const where = () => { const t = document.querySelector('main').innerText;
+    const top = s => { const el = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.textContent.includes(s)); return el ? Math.round(el.getBoundingClientRect().top + scrollY) : -1; };
+    return { news: /새로 생긴 것/.test(t), install: /홈 화면에 두고/.test(t), installTop: top('홈 화면에 두고'), newsTop: top('새로 생긴 것'), items: WHATS_NEW.items.length }; };
+  /* ① */
+  const c1 = await newCtx({ viewport:{width:390,height:844}, userAgent: IOS });
+  const p1 = await c1.newPage(); p1.on('pageerror', e=>errs.push(e.message)); p1.on('dialog', d=>d.accept()); p1.setDefaultTimeout(4000);
+  await p1.goto(BASE); await p1.waitForTimeout(400);
+  await p1.fill('#obBirth','2026-07-06'); await p1.click('button.pri:has-text("다음")'); await p1.waitForTimeout(120);
+  await p1.click('button.opt >> nth=4'); await p1.click('button.pri:has-text("다음")'); await p1.waitForTimeout(120);
+  await p1.click('button.opt >> nth=0'); await p1.click('button.pri:has-text("시작하기")'); await p1.waitForTimeout(300);
+  await p1.evaluate(()=>{ render(); render(); }); await p1.waitForTimeout(150);   /* 첫 그리기 뒤 다시 그릴 때 뚫렸었다 */
+  const n1 = await p1.evaluate(where);
+  if (n1.news) probs.push('새 사용자 홈에 «새로 생긴 것»');
+  if (!n1.install) probs.push('아이폰 사파리 새 사용자 홈에 설치 안내 없음');
+  else if (n1.installTop > 844) probs.push('설치 안내가 첫 화면 밖 '+n1.installTop+'px');
+  await c1.close();
+  /* ② */
+  const c2 = await newCtx({ viewport:{width:390,height:844}, userAgent: IOS });
+  const p2 = await c2.newPage(); p2.on('pageerror', e=>errs.push(e.message)); p2.setDefaultTimeout(4000);
+  await p2.goto(BASE); await p2.evaluate(c=>localStorage.setItem('siwoo.child', c), CHILD); await p2.reload(); await p2.waitForTimeout(400);
+  await p2.evaluate(()=>{ store.set('firstUse','2026-09-01'); go('home'); render(); }); await p2.waitForTimeout(150);
+  const n2 = await p2.evaluate(where);
+  if (!n2.news) probs.push('이미 쓰던 사람에게 «새로 생긴 것»이 안 보임');
+  if (n2.news && n2.install && !(n2.installTop < n2.newsTop)) probs.push('설치 안내('+n2.installTop+'px)가 새 소식('+n2.newsTop+'px)보다 아래');
+  if (n2.items > 3) probs.push('새 소식 '+n2.items+'개(3개까지)');
+  await c2.close();
+  (probs.length || errs.length) ? bad('처음 쓰는 사람의 첫 홈 화면', probs.concat(errs.slice(0,2)).join(' / '))
+    : ok('첫 홈 화면 — 새 사용자에겐 «새로 생긴 것» 없음(다시 그려도), 설치 안내는 첫 화면 안('+n1.installTop+'px), 쓰던 사람에겐 새 소식 '+n2.items+'개가 설치 안내 아래, 오류 0');
+} catch(e) { bad('처음 쓰는 사람의 첫 홈 화면', '검사 중단: '+String(e.message).split('\n')[0]); }
+
 /* 2-5b. 놀이 데이터보다 큰 아이 — «지금 월령 놀이»라고 거짓말하지 않아야 한다 */
 {
   const ctx = await newCtx({viewport:{width:412,height:900}, colorScheme:'light'});
